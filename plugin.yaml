@@ -1,0 +1,22 @@
+name: hermes-iroh-interconnect
+version: 0.1.0
+manifest_version: 2
+api_version: 1
+kind: standalone
+license: MIT
+description: >
+  Agent interconnect over Iroh QUIC (dial-by-key, NAT traversal, relay fallback).
+  A supervised Rust sidecar owns the long-lived Iroh endpoint; this plugin
+  exposes peer-pairing, status, and task-exchange tools to the agent. Inbound
+  tasks arrive through the platform adapter `iroh`.
+  v0.1 scope: outbound peer calls to paired peers; pairing is by explicit
+  ticket (key material) recorded in profile-scoped state. See docs/security.md.
+author: Richard Ahlquist
+tags: [networking, p2p, quic, agents]
+provides_tools:
+  - iroh_peer_status
+  - iroh_peer_list
+  - iroh_peer_pair
+  - iroh_peer_call
+requires_env: []
+python_dependencies: []

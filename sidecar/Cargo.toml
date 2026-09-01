@@ -1,0 +1,37 @@
+[package]
+name = "hermes-iroh-sidecar"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "MIT"
+description = "Iroh QUIC sidecar for the Hermes agent interconnect plugin"
+
+[dependencies]
+tokio = { version = ">=1.44,<2", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "net"] }
+serde = { version = ">=1,<2", features = ["derive"] }
+serde_json = ">=1,<2"
+anyhow = ">=1,<2"
+hex = ">=0.4,<0.5"
+rand = ">=0.8,<0.9"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Pinned to the exact Iroh line verified against iroh-rings 0.7.0 (Iroh 1.0.0).
+iroh = { version = "=1.0.0", default-features = false, features = ["tls-ring"] }
+
+[dev-dependencies]
+tempfile = ">=3,<4"
+
+[features]
+default = []
+# Optional ring-based authorization gate. Disabled by default so the spike
+# builds without iroh-rings; enable with --features rings once the wrapper
+# crate is wired.
+rings = ["dep:iroh-rings"]
+
+[dependencies.iroh-rings]
+version = "=0.7.0"
+optional = true
+
+[[bin]]
+name = "hermes-iroh-sidecar"
+path = "src/main.rs"
