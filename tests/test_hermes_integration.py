@@ -12,6 +12,7 @@ Contract (plan §7 Hermes integration tests):
 
 import json
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ _TOOL_NAMES = (
     "iroh_peer_status",
     "iroh_peer_list",
     "iroh_peer_pair",
+    "iroh_peer_make_ticket",
     "iroh_peer_call",
 )
 
@@ -100,9 +102,12 @@ def test_pair_then_call_fail_closed(hermes_env, monkeypatch):
 
     ticket = (
         "hermes-iroh://pair?peer=e2epeer123456&secret=longenoughsecretvalue42"
+        f"&ts={int(time.time())}&nonce={'ab12cd34ef56ab12cd34ef56ab12cd34'}"
     )
     pair_out = json.loads(
-        registry.get_entry("iroh_peer_pair").handler({"ticket": ticket}, task_id=None)
+        registry.get_entry("iroh_peer_pair").handler(
+            {"ticket": ticket, "confirm": True}, task_id=None
+        )
     )
     assert pair_out["success"] is True
 

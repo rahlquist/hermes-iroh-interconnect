@@ -145,9 +145,15 @@ impl PeerReply {
 }
 
 /// Inbound per-stream handler: one request frame in, one reply frame out.
+///
+/// Every request passes the admission guard (replay / concurrency cap /
+/// per-peer rate limit) before reaching the task engine; rejected requests
+/// get a structured `task.error` and never touch the engine.
 #[derive(Clone)]
 pub struct HermesHandler {
     engine: Arc<dyn TaskEngine>,
+    guard: Arc<crate::guard::Guarded>,
+    in_flight: Arc<std::sync::atomic::AtomicUsize>,
     max_frame_bytes: usize,
 }
 
@@ -155,6 +161,9 @@ impl Default for HermesHandler {
     fn default() -> Self {
         Self {
             engine: Arc::new(EchoEngine),
+            // Defaults: 8 concurrent tasks, 30 req/peer/minute.
+            guard: Arc::new(crate::guard::Guarded::new(8, 30, 60.0)),
+            in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             max_frame_bytes: protocol::MAX_FRAME_BYTES,
         }
     }
@@ -164,6 +173,9 @@ impl HermesHandler {
     pub fn new(engine: Arc<dyn TaskEngine>) -> Self {
         Self {
             engine,
+            // Defaults: 8 concurrent tasks, 30 req/peer/minute.
+            guard: Arc::new(crate::guard::Guarded::new(8, 30, 60.0)),
+            in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             max_frame_bytes: protocol::MAX_FRAME_BYTES,
         }
     }
@@ -197,7 +209,29 @@ impl HermesHandler {
         // Validate the envelope; malformed input produces task.error, never a panic.
         let reply = match envelope::parse(text) {
             Ok(env) => {
+                // Admission guard: replay, concurrency cap, per-peer rate
+                // limit. Rejected requests never reach the engine.
+                let in_flight = self.in_flight.load(std::sync::atomic::Ordering::SeqCst);
+                let guard_result = self.guard.admit(peer, &env.request_id, in_flight);
+                if let Err(err) = guard_result {
+                    let reply = serde_json::json!({
+                        "protocol": envelope::PROTOCOL_NAME,
+                        "version": envelope::PROTOCOL_VERSION,
+                        "type": "task.error",
+                        "requestId": env.request_id,
+                        "payload": {"status": "failed", "error": err.to_string()},
+                    });
+                    let reply_bytes = serde_json::to_vec(&reply)?;
+                    send.write_all(&protocol::encode_frame(&reply_bytes))
+                        .await?;
+                    send.finish()?;
+                    return Ok(());
+                }
+                self.in_flight
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let (reply_text, status) = self.engine.handle_task_from(peer, &env);
+                self.in_flight
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
                 serde_json::json!({
                     "protocol": envelope::PROTOCOL_NAME,
                     "version": envelope::PROTOCOL_VERSION,

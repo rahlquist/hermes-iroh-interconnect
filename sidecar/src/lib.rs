@@ -4,6 +4,7 @@
 //! wire contract without spawning processes.
 
 pub mod envelope;
+pub mod guard;
 pub mod handoff;
 pub mod identity;
 pub mod protocol;

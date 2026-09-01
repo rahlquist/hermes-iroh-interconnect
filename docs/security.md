@@ -36,6 +36,11 @@ the operator must not assume.
 - **Bounded failures.** A peer that cannot be dialed produces a structured
   error after the configured timeout — no hang, no partial state, and
   `last_called` is not updated on failure.
+- **Inbound admission guard.** Every inbound request passes a guard before
+  reaching the task engine: `requestId` replay is rejected (dedupe window),
+  total concurrent tasks are capped (8), and each peer is rate-limited
+  (30 req/min sliding window). Rejected requests get a structured
+  `task.error`; the agent is never invoked.
 - **Outbound redaction.** Bearer tokens, `secret|token|password|api_key=...`
   shapes, and PEM private keys are masked before text leaves the process
   (outbound tool text and adapter replies).
@@ -51,9 +56,10 @@ the operator must not assume.
   use": the pinned iroh-rings 0.7.0 gate would be enabled only behind a
   Hermes wrapper that fixes the `can_access` OR-bypass and `FsTransfer`
   range-count allocation. Not wired.
-- **Pairing confirmation UX.** v0.2 trusts the operator's ticket handling.
-  Human-in-the-loop confirmation and ticket expiry/single-use nonces are
-  staged follow-ups.
+- **Pairing confirmation UX.** Landed in v0.3: tickets carry expiry +
+  single-use nonces and pairing requires explicit operator confirmation
+  (`confirm=true`). What remains is a UI surface for the confirmation
+  prompt (currently the model must re-invoke the tool with the flag).
 - **Relay policy.** The sidecar currently uses the default relay set. Public
   relays observe connection metadata (not plaintext); self-hosted relay
   configuration is a follow-up.
