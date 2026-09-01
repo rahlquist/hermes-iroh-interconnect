@@ -49,8 +49,8 @@ pub struct Envelope {
 /// Unknown fields are ignored. Violations of the v1 contract return a
 /// descriptive error string (fail closed).
 pub fn parse(json: &str) -> Result<Envelope, String> {
-    let env: Envelope = serde_json::from_str(json)
-        .map_err(|e| format!("invalid envelope JSON: {e}"))?;
+    let env: Envelope =
+        serde_json::from_str(json).map_err(|e| format!("invalid envelope JSON: {e}"))?;
 
     if env.protocol != PROTOCOL_NAME {
         return Err(format!(

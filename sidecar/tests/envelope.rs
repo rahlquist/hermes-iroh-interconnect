@@ -30,10 +30,7 @@ fn parses_a_valid_task_request() {
 
 #[test]
 fn tolerates_unknown_fields() {
-    let with_extra = base_envelope().replace(
-        "}}",
-        r#"}, "futureField": {"nested": true}}"#,
-    );
+    let with_extra = base_envelope().replace("}}", r#"}, "futureField": {"nested": true}}"#);
     let env = envelope::parse(&with_extra).unwrap();
     assert_eq!(env.msg_type, "task.request");
 }
@@ -91,7 +88,18 @@ fn all_v1_message_types_parse() {
 
 #[test]
 fn parses_task_result_and_error_types() {
-    for t in ["task.result", "task.error", "task.input_required", "task.progress", "hello", "hello.accepted", "hello.rejected", "ping", "pong", "close"] {
+    for t in [
+        "task.result",
+        "task.error",
+        "task.input_required",
+        "task.progress",
+        "hello",
+        "hello.accepted",
+        "hello.rejected",
+        "ping",
+        "pong",
+        "close",
+    ] {
         let raw = base_envelope().replace("task.request", t);
         assert!(envelope::parse(&raw).is_ok(), "type {t} should parse");
     }

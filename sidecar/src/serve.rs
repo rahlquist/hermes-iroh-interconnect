@@ -211,7 +211,11 @@ pub async fn run(state_dir: std::path::PathBuf) -> Result<()> {
         let (id, _method) = match serde_json::from_str::<RpcRequest>(trimmed) {
             Ok(req) => (req.id.clone(), req.method.clone()),
             Err(e) => {
-                writeln!(out, "{}", rpc_err(&Value::Null, format!("malformed request: {e}")))?;
+                writeln!(
+                    out,
+                    "{}",
+                    rpc_err(&Value::Null, format!("malformed request: {e}"))
+                )?;
                 out.flush()?;
                 continue;
             }
@@ -223,11 +227,7 @@ pub async fn run(state_dir: std::path::PathBuf) -> Result<()> {
                 writeln!(out, "{}", rpc_ok(&id, result))?;
             }
             Err(e) if e.to_string() == "__shutdown__" => {
-                writeln!(
-                    out,
-                    "{}",
-                    rpc_ok(&id, json!({"bye": true}))
-                )?;
+                writeln!(out, "{}", rpc_ok(&id, json!({"bye": true})))?;
                 out.flush()?;
                 break;
             }

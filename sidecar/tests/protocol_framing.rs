@@ -42,7 +42,10 @@ fn multiple_frames_round_trip() {
 fn incomplete_frame_returns_none() {
     let buf = &protocol::encode_frame(br#"{"partial"#)[..6]; // 4-byte header + 2 bytes
     let result = protocol::decode_frame(buf).unwrap();
-    assert!(result.is_none(), "incomplete frame must signal need-for-more");
+    assert!(
+        result.is_none(),
+        "incomplete frame must signal need-for-more"
+    );
 }
 
 #[test]

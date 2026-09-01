@@ -129,8 +129,7 @@ impl FileHandoffEngine {
         }
 
         let reply_path = queue.join(format!("reply-{task_id}.json"));
-        let deadline = std::time::Instant::now()
-            + Duration::from_secs_f64(self.deadline_secs);
+        let deadline = std::time::Instant::now() + Duration::from_secs_f64(self.deadline_secs);
         loop {
             if std::time::Instant::now() >= deadline {
                 let _ = std::fs::remove_file(&task_path);

@@ -17,8 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 fn binary() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("target/debug/hermes-iroh-sidecar")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/hermes-iroh-sidecar")
 }
 
 struct ServeProc {
@@ -40,16 +39,15 @@ impl ServeProc {
             .expect("spawn serve");
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
-        Self { child, stdin, stdout }
+        Self {
+            child,
+            stdin,
+            stdout,
+        }
     }
 
     fn rpc(&mut self, req: serde_json::Value) -> serde_json::Value {
-        writeln!(
-            self.stdin,
-            "{}",
-            serde_json::to_string(&req).unwrap()
-        )
-        .unwrap();
+        writeln!(self.stdin, "{}", serde_json::to_string(&req).unwrap()).unwrap();
         self.stdin.flush().unwrap();
         let mut out = String::new();
         self.stdout.read_line(&mut out).expect("reply line");
@@ -109,8 +107,7 @@ fn full_inbound_chain_quic_to_adapter_and_back() {
                     continue;
                 }
                 let task: serde_json::Value =
-                    serde_json::from_str(&std::fs::read_to_string(entry.path()).unwrap())
-                        .unwrap();
+                    serde_json::from_str(&std::fs::read_to_string(entry.path()).unwrap()).unwrap();
                 let task_id = task["taskId"].as_str().unwrap().to_string();
                 let text = task["text"].as_str().unwrap().to_string();
                 assert!(

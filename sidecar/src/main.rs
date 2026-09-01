@@ -55,14 +55,10 @@ fn main() -> Result<()> {
                 .and_then(|i| args.get(i + 1))
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(default_state_dir);
-            let key = hermes_iroh_sidecar::identity::load_or_create(
-                state_dir.join("endpoint.key"),
-            )?;
+            let key =
+                hermes_iroh_sidecar::identity::load_or_create(state_dir.join("endpoint.key"))?;
             let id = iroh::EndpointId::from(key.public());
-            println!(
-                "{}",
-                serde_json::json!({"endpointId": id.to_z32()})
-            );
+            println!("{}", serde_json::json!({"endpointId": id.to_z32()}));
             Ok(())
         }
         Some("serve") => {
@@ -101,16 +97,15 @@ fn main() -> Result<()> {
                 .and_then(|r| r.as_str())
                 .unwrap_or("unknown")
                 .to_string();
-            let (reply_text, status) = engine.handle_task(
-                &hermes_iroh_sidecar::envelope::Envelope {
+            let (reply_text, status) =
+                engine.handle_task(&hermes_iroh_sidecar::envelope::Envelope {
                     protocol: "hermes-interconnect".to_string(),
                     version: 1,
                     msg_type: "task.request".to_string(),
                     request_id: request_id.clone(),
                     session_id: String::new(),
                     payload: json!({"text": text}),
-                },
-            );
+                });
             let reply = json!({
                 "status": status,
                 "text": reply_text,

@@ -97,20 +97,15 @@ fn task_file_contains_peer_and_context() {
                 .find(|e| e.file_name().to_string_lossy().starts_with("task-"));
             if let Some(entry) = found {
                 let task: serde_json::Value =
-                    serde_json::from_str(&std::fs::read_to_string(entry.path()).unwrap())
-                        .unwrap();
-                assert!(task["taskId"]
-                    .as_str()
-                    .unwrap()
-                    .starts_with("task-"));
+                    serde_json::from_str(&std::fs::read_to_string(entry.path()).unwrap()).unwrap();
+                assert!(task["taskId"].as_str().unwrap().starts_with("task-"));
                 assert_eq!(task["peerId"], "unknown-peer");
                 assert_eq!(task["text"], "meta check");
                 // Unblock the engine promptly.
                 let task_id = task["taskId"].as_str().unwrap().to_string();
                 std::fs::write(
                     queue.join(format!("reply-{task_id}.json")),
-                    json!({"taskId": task_id, "status": "completed", "text": "ok"})
-                        .to_string(),
+                    json!({"taskId": task_id, "status": "completed", "text": "ok"}).to_string(),
                 )
                 .unwrap();
                 return;

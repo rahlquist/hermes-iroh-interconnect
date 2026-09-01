@@ -38,7 +38,10 @@ fn identity_is_a_valid_ed25519_keypair() {
     let key = identity::load_or_create(dir.path().join("k")).unwrap();
     // The public half must be derivable and stable.
     let id1 = key.public().to_z32();
-    let id2 = identity::load_or_create(dir.path().join("k")).unwrap().public().to_z32();
+    let id2 = identity::load_or_create(dir.path().join("k"))
+        .unwrap()
+        .public()
+        .to_z32();
     assert_eq!(id1, id2);
     assert_eq!(id1.len(), 52, "z-base32 endpoint id length");
 }

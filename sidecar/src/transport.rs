@@ -192,13 +192,12 @@ impl HermesHandler {
             .await
             .context("reading frame payload")?;
 
-        let text = std::str::from_utf8(&payload)
-            .context("frame payload is not valid UTF-8")?;
+        let text = std::str::from_utf8(&payload).context("frame payload is not valid UTF-8")?;
 
         // Validate the envelope; malformed input produces task.error, never a panic.
         let reply = match envelope::parse(text) {
             Ok(env) => {
-                let (reply_text, status) = self.engine.handle_task_from(&peer, &env);
+                let (reply_text, status) = self.engine.handle_task_from(peer, &env);
                 serde_json::json!({
                     "protocol": envelope::PROTOCOL_NAME,
                     "version": envelope::PROTOCOL_VERSION,
@@ -233,10 +232,7 @@ impl std::fmt::Debug for HermesHandler {
 }
 
 impl iroh::protocol::ProtocolHandler for HermesHandler {
-    async fn accept(
-        &self,
-        conn: Connection,
-    ) -> Result<(), iroh::protocol::AcceptError> {
+    async fn accept(&self, conn: Connection) -> Result<(), iroh::protocol::AcceptError> {
         // One bi-stream per request keeps every interaction bounded; the
         // library never grows a queue from remote input. The sender's
         // identity is captured once per connection (TLS-authenticated) and
@@ -268,11 +264,12 @@ pub async fn call_peer(
     if request_frame.len() > 4 && request_frame[..4] == 0xFFFF_FFFFu32.to_be_bytes() {
         bail!("frame too large");
     }
-    let header_len = u32::from_be_bytes(
-        request_frame[..4].try_into().unwrap(),
-    ) as usize;
+    let header_len = u32::from_be_bytes(request_frame[..4].try_into().unwrap()) as usize;
     if header_len > protocol::MAX_FRAME_BYTES {
-        bail!("frame length {header_len} too large (max {})", protocol::MAX_FRAME_BYTES);
+        bail!(
+            "frame length {header_len} too large (max {})",
+            protocol::MAX_FRAME_BYTES
+        );
     }
 
     let conn = endpoint.connect(addr, HERMES_ALPN).await?;
@@ -297,7 +294,6 @@ pub async fn call_peer(
         .context("timed out waiting for reply payload")?
         .context("peer closed before reply payload")?;
 
-    let text = std::str::from_utf8(&payload)
-        .context("reply frame payload is not valid UTF-8")?;
+    let text = std::str::from_utf8(&payload).context("reply frame payload is not valid UTF-8")?;
     PeerReply::parse(text)
 }

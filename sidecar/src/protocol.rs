@@ -29,7 +29,12 @@ pub fn encode_frame(payload: &[u8]) -> Vec<u8> {
 /// - `Ok(None)` when more bytes are needed (header or payload incomplete);
 /// - `Err(message)` when the length exceeds [`MAX_FRAME_BYTES`] or the
 ///   payload is not valid UTF-8.
-pub fn decode_frame(buf: &[u8]) -> Result<Option<(&[u8], &[u8])>, String> {
+///
+/// Decoded frame result: the payload slice plus the remaining buffer (for
+/// pipelined streams). `None` payload means an empty frame.
+pub type DecodedFrame<'a> = Result<Option<(&'a [u8], &'a [u8])>, String>;
+
+pub fn decode_frame(buf: &[u8]) -> DecodedFrame<'_> {
     if buf.len() < 4 {
         return Ok(None);
     }
@@ -46,8 +51,7 @@ pub fn decode_frame(buf: &[u8]) -> Result<Option<(&[u8], &[u8])>, String> {
         return Ok(None);
     }
     let payload = &buf[4..end];
-    std::str::from_utf8(payload)
-        .map_err(|e| format!("frame payload is not valid UTF-8: {e}"))?;
+    std::str::from_utf8(payload).map_err(|e| format!("frame payload is not valid UTF-8: {e}"))?;
     Ok(Some((payload, &buf[end..])))
 }
 

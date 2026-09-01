@@ -42,7 +42,10 @@ async fn spawn_acceptor(secret: SecretKey) -> anyhow::Result<(Endpoint, Endpoint
     };
 
     let router = iroh::protocol::Router::builder(endpoint.clone())
-        .accept(ALPN, hermes_iroh_sidecar::transport::HermesHandler::default())
+        .accept(
+            ALPN,
+            hermes_iroh_sidecar::transport::HermesHandler::default(),
+        )
         .spawn();
     std::mem::forget(router); // keep alive for the test process lifetime
 
@@ -52,14 +55,12 @@ async fn spawn_acceptor(secret: SecretKey) -> anyhow::Result<(Endpoint, Endpoint
 #[tokio::test]
 async fn hello_and_task_round_trip_over_loopback() -> anyhow::Result<()> {
     let (_server, addr) = spawn_acceptor(SecretKey::generate()).await?;
-    let client = Endpoint::builder(presets::Minimal).alpns(vec![ALPN.to_vec()]).bind().await?;
+    let client = Endpoint::builder(presets::Minimal)
+        .alpns(vec![ALPN.to_vec()])
+        .bind()
+        .await?;
 
-    let result = transport::call_peer(
-        &client,
-        addr,
-        task_request("What is 2+2?"),
-    )
-    .await?;
+    let result = transport::call_peer(&client, addr, task_request("What is 2+2?")).await?;
 
     assert_eq!(result.status, "completed");
     assert!(!result.text.is_empty());
@@ -69,7 +70,10 @@ async fn hello_and_task_round_trip_over_loopback() -> anyhow::Result<()> {
 #[tokio::test]
 async fn oversized_frame_is_rejected_without_exchange() -> anyhow::Result<()> {
     let (_server, addr) = spawn_acceptor(SecretKey::generate()).await?;
-    let client = Endpoint::builder(presets::Minimal).alpns(vec![ALPN.to_vec()]).bind().await?;
+    let client = Endpoint::builder(presets::Minimal)
+        .alpns(vec![ALPN.to_vec()])
+        .bind()
+        .await?;
 
     // Build a frame claiming a length above MAX_FRAME_BYTES.
     let mut bad = Vec::new();
@@ -87,7 +91,10 @@ async fn oversized_frame_is_rejected_without_exchange() -> anyhow::Result<()> {
 #[tokio::test]
 async fn malformed_envelope_yields_task_error() -> anyhow::Result<()> {
     let (_server, addr) = spawn_acceptor(SecretKey::generate()).await?;
-    let client = Endpoint::builder(presets::Minimal).alpns(vec![ALPN.to_vec()]).bind().await?;
+    let client = Endpoint::builder(presets::Minimal)
+        .alpns(vec![ALPN.to_vec()])
+        .bind()
+        .await?;
 
     let bad_frame = protocol::encode_frame(
         br#"{"protocol":"wrong","version":1,"type":"task.request","requestId":"x"}"#,

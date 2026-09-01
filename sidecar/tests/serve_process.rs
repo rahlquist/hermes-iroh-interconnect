@@ -32,7 +32,11 @@ impl ServeProc {
             .expect("spawn serve");
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
-        Self { child, stdin, stdout }
+        Self {
+            child,
+            stdin,
+            stdout,
+        }
     }
 
     fn rpc(&mut self, req: serde_json::Value) -> serde_json::Value {
@@ -64,10 +68,13 @@ fn wait_ready(p: &mut ServeProc) -> serde_json::Value {
 }
 
 fn binary() -> std::path::PathBuf {
-    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("target/debug/hermes-iroh-sidecar");
+    let p =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/hermes-iroh-sidecar");
     // The test harness builds the bin via cargo test; ensure it exists.
-    assert!(p.exists(), "sidecar binary missing at {p:?} (run cargo build)");
+    assert!(
+        p.exists(),
+        "sidecar binary missing at {p:?} (run cargo build)"
+    );
     p
 }
 
@@ -114,14 +121,20 @@ fn dial_performs_full_task_round_trip_between_two_serve_processes() {
     let mut a = ServeProc::spawn(&binary(), dir_a.path());
     let mut b = ServeProc::spawn(&binary(), dir_b.path());
     let ready_b = wait_ready(&mut b);
-    let id_b = ready_b["result"]["endpointId"].as_str().unwrap().to_string();
+    let id_b = ready_b["result"]["endpointId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let addrs_b: Vec<String> = ready_b["result"]["addrs"]
         .as_array()
         .unwrap()
         .iter()
         .map(|v| v.as_str().unwrap().to_string())
         .collect();
-    assert!(!addrs_b.is_empty(), "peer B must expose at least one address");
+    assert!(
+        !addrs_b.is_empty(),
+        "peer B must expose at least one address"
+    );
 
     // Serve-mode B hands inbound tasks to its file queue; a thread answers
     // them the way the Python adapter would (write reply-*.json). It exits
@@ -140,11 +153,9 @@ fn dial_performs_full_task_round_trip_between_two_serve_processes() {
                 if !name.starts_with("task-") || name.ends_with(".tmp") {
                     continue;
                 }
-                if let Ok(task) =
-                    serde_json::from_str::<serde_json::Value>(
-                        &std::fs::read_to_string(entry.path()).unwrap_or_default(),
-                    )
-                {
+                if let Ok(task) = serde_json::from_str::<serde_json::Value>(
+                    &std::fs::read_to_string(entry.path()).unwrap_or_default(),
+                ) {
                     if let Some(task_id) = task["taskId"].as_str() {
                         std::fs::write(
                             queue.join(format!("reply-{task_id}.json")),
