@@ -15,8 +15,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -41,17 +40,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install Rust toolchain (build sidecar for E2E)
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             sidecar/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('sidecar/Cargo.lock') }}
-      - name: Build sidecar (debug, for E2E tests)
+      - name: Build sidecar
         working-directory: sidecar
         run: cargo build
       - name: Run plugin tests

@@ -261,22 +261,28 @@ if _HERMES_AVAILABLE:
         async def _poll_once(self) -> None:
             if not self.queue_dir.exists():
                 return
-            # Deliver any replies captured since the last tick. The reply
-            # file name and taskId come from the task's JSON field.
+            # Dispatch fresh tasks. The task remains until send() produces
+            # its reply, so the task/context pair survives async gateway work.
+            for path in list(self.queue_dir.glob("task-*.json")):
+                try:
+                    task = json.loads(path.read_text(encoding="utf-8"))
+                    context_id = str(task.get("contextId") or "")
+                except Exception:
+                    continue
+                if context_id not in self._reply_text:
+                    self._process_task_file(path)
+            # A gateway reply is delivered through send(); drain it back to
+            # the sidecar after the handler has had a chance to run.
             for path in list(self.queue_dir.glob("task-*.json")):
                 try:
                     task = json.loads(path.read_text(encoding="utf-8"))
                 except Exception:
                     continue
-                task_id = str(task.get("taskId") or "")
                 context_id = str(task.get("contextId") or "")
                 reply = self._reply_text.pop(context_id, None)
                 if reply is not None:
-                    self._write_reply(task_id, "completed", reply)
+                    self._write_reply(str(task.get("taskId") or ""), "completed", reply)
                     path.unlink(missing_ok=True)
-            # Dispatch fresh tasks.
-            for path in list(self.queue_dir.glob("task-*.json")):
-                self._process_task_file(path)
 
 else:  # pragma: no cover - Hermes internals unavailable
 

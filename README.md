@@ -37,14 +37,32 @@ Hermes agent process
           └─ ALPN /hermes/interconnect/1
 ```
 
-Status: **v0.2 — full bidirectional transport (inbound + outbound)**. Real
-QUIC peer dialing, persistent endpoint identity, serve-mode control plane,
-and the inbound platform adapter are implemented and covered end-to-end:
+Status: **v0.3-alpha — bidirectional transport plus optional artifacts**.
+Real QUIC peer dialing, persistent endpoint identity, serve-mode control
+plane, inbound authorization, admission hardening, relay configuration, and
+optional SendMe-backed file transfer are implemented and covered end-to-end:
 a real QUIC peer → sidecar file handoff → adapter → reply back over QUIC
-runs green in CI-style tests. Ring-based authorization and pairing
-confirmation UX remain staged follow-ups (see "Roadmap").
+runs green in CI-style tests. File transfer is delegated to SendMe when
+installed; without it, the task interconnect remains fully functional.
+Ring-based authorization remains staged (see "Roadmap").
 
-## What's verified (v0.2)
+### Optional file transfer
+
+The plugin exposes `iroh_send_file`, `iroh_fetch_file`, and
+`iroh_transfer_status` through the `iroh` toolset. They use the installed
+SendMe CLI (`sendme`) and are optional: if SendMe is unavailable, the tools
+return an actionable install message and do not affect peer/task exchange.
+Install and verify it with:
+
+```bash
+cargo install --locked sendme
+sendme --version
+```
+
+A SendMe sender must remain running until the receiver completes. Treat its
+ticket as a bearer capability and share it only with the intended peer.
+
+## What's verified (v0.3-alpha)
 
 - Two live sidecar processes dial each other over real QUIC and exchange
   tasks (Rust `serve_process` tests; Python `SidecarSession` tests).
