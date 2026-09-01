@@ -1,9 +1,24 @@
 # hermes-iroh-interconnect
 
+> [!WARNING]
+> **Alpha software.** This plugin is under active development. The wire
+> protocol (`hermes-interconnect` v1) may change without migration, inbound
+> peer authentication mapping is not yet wired (see `docs/security.md`),
+> and it has not been hardened against adversarial peers outside the test
+> suite. Do not connect it to untrusted agents. Pin the exact commit you
+> install and re-read `docs/security.md` before enabling inbound use.
+
 Agent interconnect for [Hermes Agent](https://github.com/NousResearch/hermes-agent)
 over [Iroh](https://github.com/n0-computer/iroh): dial-by-key QUIC with NAT
 traversal and relay fallback. Implements the interconnection model proven in
 Codux on Hermes' native plugin surface.
+
+> [!NOTE]
+> **Unaffiliated community project.** This plugin is an independent,
+> third-party extension — not an official Nous Research product, and not
+> endorsed by or affiliated with Nous Research, n0-computer (Iroh), or
+> duxweb (Codux). Hermes, Iroh, and Codux are the properties of their
+> respective owners.
 
 **Architecture** (per the feasibility plan, §2):
 
