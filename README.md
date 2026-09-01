@@ -54,6 +54,10 @@ confirmation UX remain staged follow-ups (see "Roadmap").
 - Inbound tasks from unknown peers are rejected (fail closed).
 - Outbound calls to unreachable peers fail bounded (no hang, structured
   error, no partial state).
+- Optional SendMe-backed file transfer tools are registered without making
+  SendMe a plugin dependency. If `sendme` is absent, they return an
+  actionable install/verify message; all task interconnect functionality
+  continues to work normally.
 
 ## Install
 

@@ -35,14 +35,18 @@ from security import (
     redact_outbound,
     validate_ticket,
 )
+from transfer_tools import iroh_fetch_file, iroh_send_file, iroh_transfer_status
 
 __all__ = [
     "register_tools",
+    "iroh_fetch_file",
     "iroh_peer_call",
     "iroh_peer_list",
     "iroh_peer_make_ticket",
     "iroh_peer_pair",
     "iroh_peer_status",
+    "iroh_send_file",
+    "iroh_transfer_status",
 ]
 
 _TOOLSET = "iroh"
@@ -390,6 +394,88 @@ def register_tools(ctx: Any) -> None:
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
         handler=iroh_peer_make_ticket,
+    )
+    ctx.register_tool(
+        name="iroh_send_file",
+        toolset=_TOOLSET,
+        schema={
+            "name": "iroh_send_file",
+            "description": (
+                "Share one file or directory with a peer over iroh-blobs "
+                "(via the SendMe CLI, if installed) and get a transfer "
+                "ticket. Optional feature: requires sendme on this machine; "
+                "otherwise returns install instructions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File or directory to share",
+                    },
+                    "allow_sensitive": {
+                        "type": "boolean",
+                        "description": (
+                            "Explicitly authorize sharing a path that "
+                            "matches sensitive-material patterns"
+                        ),
+                    },
+                },
+                "required": ["path"],
+            },
+        },
+        handler=iroh_send_file,
+    )
+    ctx.register_tool(
+        name="iroh_fetch_file",
+        toolset=_TOOLSET,
+        schema={
+            "name": "iroh_fetch_file",
+            "description": (
+                "Fetch a SendMe ticket into an explicit destination "
+                "directory and verify the result. Optional feature: "
+                "requires sendme on this machine; otherwise returns "
+                "install instructions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticket": {
+                        "type": "string",
+                        "description": "The sendme receive ticket string",
+                    },
+                    "dest": {
+                        "type": "string",
+                        "description": "Existing destination directory",
+                    },
+                },
+                "required": ["ticket", "dest"],
+            },
+        },
+        handler=iroh_fetch_file,
+    )
+    ctx.register_tool(
+        name="iroh_transfer_status",
+        toolset=_TOOLSET,
+        schema={
+            "name": "iroh_transfer_status",
+            "description": (
+                "List tracked SendMe providers (from iroh_send_file) or "
+                "stop one by transfer id. Optional feature: requires "
+                "sendme; otherwise returns install instructions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "stop": {
+                        "type": "string",
+                        "description": "Transfer id to stop (from listing)",
+                    },
+                },
+                "required": [],
+            },
+        },
+        handler=iroh_transfer_status,
     )
     ctx.register_tool(
         name="iroh_peer_call",

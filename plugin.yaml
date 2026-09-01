@@ -17,6 +17,10 @@ provides_tools:
   - iroh_peer_status
   - iroh_peer_list
   - iroh_peer_pair
+  - iroh_peer_make_ticket
+  - iroh_send_file
+  - iroh_fetch_file
+  - iroh_transfer_status
   - iroh_peer_call
 requires_env: []
 python_dependencies: []
