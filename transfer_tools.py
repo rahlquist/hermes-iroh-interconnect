@@ -182,10 +182,9 @@ def iroh_send_file(args: dict, **_: Any) -> str:
     patterns reject before any process starts. The provider runs as a
     tracked background process and must stay alive for the transfer.
     """
-    binary = sendme_available()
-    if binary is None:
-        return json.dumps(sendme_install_hint())
-
+    # Validate the user's requested path before probing the optional
+    # dependency, so malformed/unsafe input still gets a precise error on a
+    # machine without SendMe.
     raw_path = str(args.get("path") or "").strip()
     if not raw_path:
         return _err("'path' is required (file or directory to share)")
@@ -203,6 +202,10 @@ def iroh_send_file(args: dict, **_: Any) -> str:
 
     if not path.is_file() and not path.is_dir():
         return _err(f"path is neither a regular file nor a directory: {path}")
+
+    binary = sendme_available()
+    if binary is None:
+        return json.dumps(sendme_install_hint())
 
     cmd = [binary, "send", "--no-progress", str(path)] + _relay_flag()
     try:
@@ -286,10 +289,6 @@ def iroh_fetch_file(args: dict, **_: Any) -> str:
     """Fetch a SendMe ticket into a destination directory and verify the
     result. Fail-closed: missing binary, missing/unsafe destination, or a
     failing receive is reported without presenting partial state."""
-    binary = sendme_available()
-    if binary is None:
-        return json.dumps(sendme_install_hint())
-
     ticket_raw = str(args.get("ticket") or "").strip()
     if not ticket_raw:
         return _err("'ticket' is required: provide the sendme ticket string")
@@ -305,6 +304,10 @@ def iroh_fetch_file(args: dict, **_: Any) -> str:
     dest = Path(dest_raw).expanduser()
     if not dest.is_dir():
         return _err(f"destination is not an existing directory: {dest}")
+
+    binary = sendme_available()
+    if binary is None:
+        return json.dumps(sendme_install_hint())
 
     cmd = [binary, "receive", ticket, "--no-progress"] + _relay_flag()
     try:

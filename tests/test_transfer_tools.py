@@ -90,7 +90,7 @@ class TestAvailability:
         out = json.loads(iroh_send_file({"path": "/tmp"}, task_id=None))
         assert out["success"] is False
         assert "remedy" in out
-        out = json.loads(iroh_fetch_file({"ticket": "sendme receive x", "dest": "/tmp"}, task_id=None))
+        out = json.loads(iroh_fetch_file({"ticket": "sendme receive 4abcdtickeq1234567890abcdef1234567890abcd", "dest": "/tmp"}, task_id=None))
         assert out["success"] is False
         assert "remedy" in out
 
