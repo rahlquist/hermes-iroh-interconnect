@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" font-family="'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffbeb"/>
+      <stop offset="1" stop-color="#fef3c7"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f0f9ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="1000" height="560" fill="url(#bg)"/>
+
+  <!-- title -->
+  <text x="500" y="48" text-anchor="middle" font-size="32" font-weight="700" fill="#1e293b">How Hermes Agents Connect</text>
+  <text x="500" y="76" text-anchor="middle" font-size="15" fill="#64748b">A simple picture of identity, trust, and peer-to-peer work</text>
+
+  <!-- central hub -->
+  <circle cx="500" cy="280" r="68" fill="#dbeafe" stroke="#1e40af" stroke-width="2.5" filter="url(#shadow)"/>
+  <!-- robot icon -->
+  <rect x="472" y="252" width="56" height="50" rx="8" fill="#1e40af"/>
+  <rect x="482" y="262" width="10" height="10" rx="2" fill="#fff"/>
+  <rect x="508" y="262" width="10" height="10" rx="2" fill="#fff"/>
+  <rect x="490" y="282" width="20" height="6" rx="3" fill="#fff"/>
+  <rect x="494" y="242" width="12" height="14" rx="3" fill="#1e40af"/>
+  <circle cx="500" cy="238" r="5" fill="#fbbf24"/>
+  <!-- shield in hand -->
+  <path d="M532 290 L548 282 L548 302 L532 310 Z" fill="#fbbf24" stroke="#b45309" stroke-width="1.5"/>
+  <text x="540" y="298" text-anchor="middle" font-size="10" font-weight="700" fill="#b45309">✓</text>
+
+  <text x="500" y="370" text-anchor="middle" font-size="16" font-weight="700" fill="#1e40af">Your Hermes agent</text>
+  <text x="500" y="392" text-anchor="middle" font-size="13" fill="#475569">connects trusted peers</text>
+
+  <!-- step 1 -->
+  <rect x="40" y="120" width="220" height="170" rx="14" fill="url(#panel)" stroke="#0ea5e9" stroke-width="2" filter="url(#shadow)"/>
+  <text x="64" y="152" font-size="13" font-weight="600" fill="#0ea5e9">01</text>
+  <text x="64" y="176" font-size="18" font-weight="700" fill="#1e293b">Pair once</text>
+  <!-- two people exchanging ticket -->
+  <circle cx="100" cy="210" r="18" fill="#fce7f3"/>
+  <rect x="86" y="200" width="28" height="20" rx="2" fill="#f472b6"/>
+  <rect x="150" y="210" width="28" height="36" rx="2" fill="#bfdbfe"/>
+  <circle cx="164" cy="200" r="14" fill="#dbeafe"/>
+  <!-- ticket -->
+  <rect x="118" y="214" width="32" height="20" rx="3" fill="#fff" stroke="#0ea5e9" stroke-width="1.5"/>
+  <text x="134" y="228" text-anchor="middle" font-size="8" fill="#0ea5e9">TICKET</text>
+  <text x="150" y="260" text-anchor="middle" font-size="12" fill="#475569">Review, then confirm.</text>
+  <text x="150" y="278" text-anchor="middle" font-size="12" fill="#475569">Single-use; expires in 15 min.</text>
+
+  <!-- arrow from step 1 to center -->
+  <path d="M260 200 C320 200 380 240 432 268" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#475569"/></marker></defs>
+
+  <!-- step 2 -->
+  <rect x="740" y="120" width="220" height="170" rx="14" fill="url(#panel)" stroke="#8b5cf6" stroke-width="2" filter="url(#shadow)"/>
+  <text x="764" y="152" font-size="13" font-weight="600" fill="#8b5cf6">02</text>
+  <text x="764" y="176" font-size="18" font-weight="700" fill="#1e293b">Find a path</text>
+  <!-- two computers + cloud -->
+  <rect x="790" y="200" width="24" height="32" rx="3" fill="#c4b5fd"/>
+  <rect x="794" y="206" width="16" height="10" rx="1" fill="#fff"/>
+  <rect x="886" y="200" width="24" height="32" rx="3" fill="#c4b5fd"/>
+  <rect x="890" y="206" width="16" height="10" rx="1" fill="#fff"/>
+  <!-- cloud -->
+  <ellipse cx="850" cy="206" rx="22" ry="14" fill="#e0e7ff"/>
+  <text x="850" y="210" text-anchor="middle" font-size="10" fill="#6366f1">☁</text>
+  <!-- direct line -->
+  <line x1="818" y1="216" x2="828" y2="216" stroke="#8b5cf6" stroke-width="2"/>
+  <!-- dashed relay -->
+  <path d="M818 216 C830 190 870 190 882 216" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="850" y="260" text-anchor="middle" font-size="12" fill="#475569">Iroh finds the current route.</text>
+  <text x="850" y="278" text-anchor="middle" font-size="12" fill="#475569">Direct first; relay if needed.</text>
+
+  <!-- arrow from center to step 2 -->
+  <path d="M568 268 C620 240 680 200 740 200" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- step 3 -->
+  <rect x="40" y="330" width="220" height="170" rx="14" fill="url(#panel)" stroke="#f59e0b" stroke-width="2" filter="url(#shadow)"/>
+  <text x="64" y="362" font-size="13" font-weight="600" fill="#f59e0b">03</text>
+  <text x="64" y="386" font-size="18" font-weight="700" fill="#1e293b">Prove + authorize</text>
+  <!-- shield with key -->
+  <path d="M130 408 L150 400 L150 428 L130 436 Z" fill="#fbbf24" stroke="#b45309" stroke-width="1.5"/>
+  <text x="140" y="424" text-anchor="middle" font-size="14" fill="#b45309">✓</text>
+  <circle cx="170" cy="420" r="10" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <rect x="166" y="420" width="8" height="16" rx="1" fill="#f59e0b"/>
+  <text x="150" y="460" text-anchor="middle" font-size="12" fill="#475569">Iroh proves the Endpoint ID.</text>
+  <text x="150" y="478" text-anchor="middle" font-size="12" fill="#475569">Hermes checks your peer allowlist.</text>
+
+  <!-- arrow from step 3 to center -->
+  <path d="M260 420 C320 420 380 380 432 352" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- step 4 -->
+  <rect x="740" y="330" width="220" height="170" rx="14" fill="url(#panel)" stroke="#10b981" stroke-width="2" filter="url(#shadow)"/>
+  <text x="764" y="362" font-size="13" font-weight="600" fill="#10b981">04</text>
+  <text x="764" y="386" font-size="18" font-weight="700" fill="#1e293b">Exchange work</text>
+  <!-- two robots exchanging -->
+  <rect x="810" y="406" width="20" height="26" rx="5" fill="#a7f3d0"/>
+  <rect x="870" y="406" width="20" height="26" rx="5" fill="#a7f3d0"/>
+  <!-- task card -->
+  <rect x="836" y="410" width="28" height="18" rx="3" fill="#fff" stroke="#10b981" stroke-width="1.5"/>
+  <text x="850" y="423" text-anchor="middle" font-size="8" fill="#10b981">TASK</text>
+  <!-- result card -->
+  <rect x="836" y="432" width="28" height="18" rx="3" fill="#fff" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="850" y="445" text-anchor="middle" font-size="8" fill="#6ee7b7">RESULT</text>
+  <!-- file ticket -->
+  <rect x="846" y="398" width="22" height="14" rx="2" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+  <text x="857" y="409" text-anchor="middle" font-size="7" fill="#b45309">FILE</text>
+  <text x="850" y="460" text-anchor="middle" font-size="12" fill="#475569">Send tasks and results.</text>
+  <text x="850" y="478" text-anchor="middle" font-size="12" fill="#475569">Optional: pass a file ticket.</text>
+
+  <!-- arrow from center to step 4 -->
+  <path d="M568 352 C620 380 680 420 740 420" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- footer note -->
+  <rect x="120" y="508" width="760" height="40" rx="10" fill="#fff7ed" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="500" y="534" text-anchor="middle" font-size="13" font-weight="600" fill="#9a3412">Network drops? The current task may fail; the next task makes a fresh connection. No re-pairing required.</text>
+</svg>

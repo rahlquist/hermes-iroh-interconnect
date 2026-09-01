@@ -86,14 +86,11 @@ sidecar stays available and a later task makes a fresh dial attempt; pairing
 does not need to be repeated. Automatic retries are intentionally limited so a
 non-idempotent task is not silently run twice.
 
-### Connection diagrams
+### Connection diagram
 
-- [Architecture: what runs on each machine](docs/diagrams/interconnect-architecture.html)
-- [Sequence: how one task is located, authenticated, and returned](docs/diagrams/connection-sequence.html)
+![How Hermes Agents Connect](docs/diagrams/how-hermes-agents-connect.svg)
 
-The diagrams are also available as editable Archify source files in
-`docs/diagrams/`. GitHub does not render standalone HTML files inside the
-repository view; open them locally or publish them with GitHub Pages.
+The diagram shows the full flow: pair once with a ticket, remember the stable EndpointId, find a network path, prove identity plus authorize the peer, and exchange work. A bottom note explains network-drop behavior.
 
 ## What's verified (v0.3-alpha)
 
