@@ -1,17 +1,18 @@
 //! `hermes-iroh-sidecar` binary.
 //!
-//! v0.1 control surface (matches ``sidecar_client.py``):
+//! Control surface:
 //!
 //! ```text
-//! sidecar call --endpoint <endpoint-id>   # one JSON request on stdin,
-//!                                         # one JSON reply on stdout
-//! sidecar serve                           # (reserved) long-lived listener
+//! sidecar serve --state-dir <dir>          # long-lived: NDJSON JSON-RPC on stdio
+//! sidecar call --endpoint <endpoint-id>    # one-shot: request on stdin, reply on stdout
+//! sidecar version
 //! ```
 //!
 //! The binary owns the Iroh endpoint; the Python plugin never touches
-//! sockets (plan §2 architecture boundary). v0.1 ships the loopback-verified
-//! echo engine; task forwarding to the local Hermes session lands with the
-//! inbound platform adapter.
+//! sockets (plan §2 architecture boundary).
+
+#[path = "serve.rs"]
+mod serve;
 
 use std::io::Read;
 
@@ -43,6 +44,18 @@ fn read_stdin_json() -> Result<ControlRequest> {
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(|s| s.as_str()) {
+        Some("serve") => {
+            let state_dir = args
+                .iter()
+                .position(|a| a == "--state-dir")
+                .and_then(|i| args.get(i + 1))
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(default_state_dir);
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()?;
+            runtime.block_on(serve::run(state_dir))
+        }
         Some("call") => {
             let endpoint = args
                 .iter()
@@ -51,9 +64,8 @@ fn main() -> Result<()> {
                 .cloned()
                 .unwrap_or_default();
             let req = read_stdin_json()?;
-            // v0.1: the echo engine answers tasks without a peer dial.
-            // Peer dialing is exercised in the loopback integration tests
-            // and lands in the binary once the pairing surface is stable.
+            // One-shot mode answers via the echo engine without a peer dial;
+            // remote dialing goes through `serve` + the `dial` method.
             let engine = EchoEngine;
             let text = req
                 .request
@@ -87,15 +99,25 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string(&reply)?);
             Ok(())
         }
-        Some("serve") => {
-            bail!("serve mode requires the inbound pairing surface (not yet implemented)")
-        }
         Some("version") => {
             println!("hermes-iroh-sidecar {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         _ => {
-            bail!("usage: hermes-iroh-sidecar <call --endpoint <id> | serve | version>")
+            bail!("usage: hermes-iroh-sidecar <serve --state-dir <dir> | call --endpoint <id> | version>")
         }
     }
+}
+
+fn default_state_dir() -> std::path::PathBuf {
+    if let Ok(home) = std::env::var("HERMES_HOME") {
+        return std::path::PathBuf::from(home).join("iroh-interconnect");
+    }
+    dirs_home().join(".hermes/iroh-interconnect")
+}
+
+fn dirs_home() -> std::path::PathBuf {
+    std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
 }

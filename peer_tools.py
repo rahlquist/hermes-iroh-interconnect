@@ -154,28 +154,27 @@ def iroh_peer_call(args: dict, **_: Any) -> str:
     # Outbound redaction is defense in depth (plan §7).
     safe_message = redact_outbound(message)
 
-    request = {
-        "protocol": "hermes-interconnect",
-        "version": 1,
-        "type": "task.request",
-        "requestId": f"{peer_id}:{int(datetime.now(timezone.utc).timestamp()*1000)}",
-        "payload": {"text": safe_message, "contextId": context_id},
-    }
+    from sidecar_client import SidecarSession, SidecarUnavailable, default_sidecar_path
 
     try:
-        from sidecar_client import SidecarClient, SidecarUnavailable
-
-        client = SidecarClient(sidecar)
-        reply = client.call(
-            request,
-            endpoint_id=record.get("endpoint_id", peer_id),
-            timeout_secs=int(os.environ.get("HERMES_IROH_TIMEOUT", "120")),
-        )
+        binary = os.environ.get("HERMES_IROH_SIDECAR") or default_sidecar_path()
+        if not binary or not Path(binary).exists():
+            return _err("sidecar binary vanished; check HERMES_IROH_SIDECAR")
+        state_dir = _state_dir()
+        with SidecarSession(binary, state_dir=state_dir) as session:
+            reply = session.dial(
+                endpoint_id=record.get("endpoint_id", peer_id),
+                addrs=record.get("addrs") or [],
+                text=safe_message,
+                timeout=int(os.environ.get("HERMES_IROH_TIMEOUT", "120")),
+            )
+    except SidecarUnavailable as exc:
+        return _err(f"peer call to '{peer_id}' failed: {exc}")
     except Exception as exc:  # bounded: transport failures become errors
         return _err(f"peer call to '{peer_id}' failed: {exc}")
 
     reply_text = str(reply.get("text") or "")[:_MAX_REPLY_TEXT]
-    status = str(reply.get("status") or "failed")
+    status_str = str(reply.get("status") or "failed")
 
     record["last_called"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     store.add_peer(peer_id, record)
@@ -183,7 +182,7 @@ def iroh_peer_call(args: dict, **_: Any) -> str:
     return _ok(
         {
             "peer": peer_id,
-            "status": status,
+            "status": status_str,
             "text": reply_text,
             "error": str(reply.get("error") or ""),
         }

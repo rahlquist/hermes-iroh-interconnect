@@ -39,6 +39,8 @@ def test_status_sees_release_sidecar(tool_env):
 
 
 def test_pair_then_call_through_real_sidecar(tool_env):
+    """A call to a peer with no addresses fails bounded (no hang, no crash):
+    the sidecar dials, cannot connect, and reports a structured error."""
     import peer_tools as iroh_tools
     from security import PeerStore
 
@@ -51,13 +53,14 @@ def test_pair_then_call_through_real_sidecar(tool_env):
             task_id=None,
         )
     )
-    assert out["success"] is True, out
-    assert out["status"] == "completed"
-    assert "Summarize the README." in out["text"]
+    # The dial cannot reach a nonexistent peer; the contract is a bounded,
+    # structured failure (never a hang, never a partial reply).
+    assert out["success"] is False
+    assert "failed" in out["error"].lower() or "timed out" in out["error"].lower()
 
-    # last_called timestamp was persisted.
+    # last_called is NOT updated on failure (no successful exchange).
     record = PeerStore(Path(os.environ["HERMES_IROH_STATE_DIR"])).get_peer("livepeer01")
-    assert record["last_called"]
+    assert record.get("last_called", "") == ""
 
 
 def test_call_rejects_oversized_message(tool_env):

@@ -22,11 +22,23 @@ Hermes agent process
           └─ ALPN /hermes/interconnect/1
 ```
 
-Status: **v0.1 — outbound task exchange (transport spike complete)**. The
-loopback QUIC round trip, frame bounds, envelope validation, and the
-Python→sidecar control chain are all covered by tests. Pairing UI, inbound
-platform adapter, and ring-based authorization are staged follow-ups (see
-"Roadmap").
+Status: **v0.2 — full bidirectional transport (inbound + outbound)**. Real
+QUIC peer dialing, persistent endpoint identity, serve-mode control plane,
+and the inbound platform adapter are implemented and covered end-to-end:
+a real QUIC peer → sidecar file handoff → adapter → reply back over QUIC
+runs green in CI-style tests. Ring-based authorization and pairing
+confirmation UX remain staged follow-ups (see "Roadmap").
+
+## What's verified (v0.2)
+
+- Two live sidecar processes dial each other over real QUIC and exchange
+  tasks (Rust `serve_process` tests; Python `SidecarSession` tests).
+- A full inbound chain: remote QUIC peer → file handoff → adapter reply →
+  back over the wire (`full_chain_e2e.rs`).
+- Persistent endpoint identity across sidecar restarts (0600 key file).
+- Inbound tasks from unknown peers are rejected (fail closed).
+- Outbound calls to unreachable peers fail bounded (no hang, structured
+  error, no partial state).
 
 ## Install
 

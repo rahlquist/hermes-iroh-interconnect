@@ -1,7 +1,8 @@
 # Security model
 
-Scope: v0.1 outbound task exchange. This document states what is enforced,
-what is deferred, and what the operator must not assume.
+Scope: v0.2 — bidirectional task exchange (outbound dialing + inbound
+adapter). This document states what is enforced, what is deferred, and what
+the operator must not assume.
 
 ## Identity and trust chain
 
@@ -24,23 +25,35 @@ what is deferred, and what the operator must not assume.
 - **Envelope validation.** Protocol name, version, message type, and required
   fields are checked; malformed input yields a structured `task.error`, never
   a panic or a pass-through.
-- **Unknown peers.** `iroh_peer_call` refuses any peer not in the store.
+- **Unknown peers.** `iroh_peer_call` refuses any peer not in the store;
+  inbound tasks from unpaired endpoint ids are rejected at the adapter.
 - **Missing sidecar.** Calls fail closed with an actionable message rather
   than silently degrading.
+- **Bounded failures.** A peer that cannot be dialed produces a structured
+  error after the configured timeout — no hang, no partial state, and
+  `last_called` is not updated on failure.
 - **Outbound redaction.** Bearer tokens, `secret|token|password|api_key=...`
-  shapes, and PEM private keys are masked before text leaves the process.
+  shapes, and PEM private keys are masked before text leaves the process
+  (outbound tool text and adapter replies).
 - **Secrets in tool output.** `iroh_peer_list` and `iroh_peer_status` never
   return ticket secrets.
+- **Persistent identity.** The endpoint key is 0600; a corrupt key file
+  fails closed with recovery instructions instead of silently re-keying
+  (which would strand paired peers).
 
 ## What is deferred (do not assume it exists yet)
 
-- **Inbound platform adapter.** Not in v0.1. Nothing listens for remote tasks
-  yet; `wrap_inbound` exists and is tested but has no live route.
+- **Inbound peer authentication mapping.** The adapter routes tasks into the
+  gateway, but the sidecar's inbound handler does not yet map the
+  authenticated Iroh `EndpointId` to a paired peer record (tasks are tagged
+  `unknown-peer` and rejected by the adapter's peer check until the mapping
+  lands with pairing). The cryptographic transport authentication is real;
+  the peer-registry lookup on inbound is the remaining seam.
 - **Ring-based authorization (iroh-rings).** Deferred by plan §"conditional
   use": the pinned iroh-rings 0.7.0 gate would be enabled only behind a
   Hermes wrapper that fixes the `can_access` OR-bypass and `FsTransfer`
-  range-count allocation. Not wired in v0.1.
-- **Pairing confirmation UX.** v0.1 trusts the operator's ticket handling.
+  range-count allocation. Not wired in v0.2.
+- **Pairing confirmation UX.** v0.2 trusts the operator's ticket handling.
   Human-in-the-loop confirmation and ticket expiry/single-use nonces are
   staged follow-ups.
 - **Relay policy.** The sidecar currently uses the default relay set. Public
@@ -49,10 +62,10 @@ what is deferred, and what the operator must not assume.
 
 ## Known limitations
 
-- One-shot sidecar process per call in v0.1 (connection churn is O(per
-  call)). A long-lived stdio session with reconnect guards is the next
-  transport milestone.
+- The sidecar spawns one serve process per `iroh_peer_call` in v0.2 (the
+  session is closed after each tool call). A persistent shared session with
+  reconnect guards is the next transport milestone.
 - The `open` ring, `FsTransfer`, and stock `Transfer::can_access` must never
   be enabled without the wrapper fixes described in the feasibility plan.
-- `peers.json` is plaintext at rest. Filesystem access is a separate trust
-  boundary; the file is 0600 but not encrypted.
+- `peers.json` and `endpoint.key` are plaintext at rest. Filesystem access
+  is a separate trust boundary; files are 0600 but not encrypted.
