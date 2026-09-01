@@ -61,6 +61,29 @@ fn main() -> Result<()> {
             println!("{}", serde_json::json!({"endpointId": id.to_z32()}));
             Ok(())
         }
+        Some("addr") => {
+            // Bind the endpoint briefly (persistent identity + ALPN), print
+            // the endpoint id and direct addresses, then exit. Used by the
+            // ticket flow so pairing tickets can carry dialable addrs.
+            let state_dir = args
+                .iter()
+                .position(|a| a == "--state-dir")
+                .and_then(|i| args.get(i + 1))
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(default_state_dir);
+            let relay = args
+                .iter()
+                .position(|a| a == "--relay")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| serve::RelayPolicy::parse(s))
+                .unwrap_or(serve::RelayPolicy::Default);
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()?;
+            let info = runtime.block_on(serve::endpoint_info(&state_dir, &relay))?;
+            println!("{}", serde_json::to_string(&info)?);
+            Ok(())
+        }
         Some("serve") => {
             let state_dir = args
                 .iter()
@@ -77,7 +100,8 @@ fn main() -> Result<()> {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()?;
-            runtime.block_on(serve::run(state_dir, &relay))
+            let keep_alive = args.iter().any(|a| a == "--keep-alive");
+            runtime.block_on(serve::run(state_dir, &relay, keep_alive))
         }
         Some("call") => {
             let endpoint = args

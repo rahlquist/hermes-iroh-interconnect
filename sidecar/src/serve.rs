@@ -97,6 +97,23 @@ fn relay_mode(policy: &RelayPolicy) -> Result<iroh::RelayMode> {
     }
 }
 
+/// Binds briefly to collect this endpoint's dialing information, then
+/// exits. Used by the `addr` subcommand so pairing tickets can carry
+/// direct addresses.
+pub async fn endpoint_info(
+    state_dir: &std::path::Path,
+    policy: &RelayPolicy,
+) -> Result<serde_json::Value> {
+    let (endpoint, id) = bind_endpoint(state_dir, policy).await?;
+    let addrs: Vec<String> = endpoint
+        .bound_sockets()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    drop(endpoint);
+    Ok(serde_json::json!({"endpointId": id, "addrs": addrs}))
+}
+
 /// Binds the endpoint with the persistent identity and spawns the router.
 pub async fn bind_endpoint(
     state_dir: &std::path::Path,
@@ -229,7 +246,13 @@ async fn handle_rpc(endpoint: &Endpoint, req: RpcRequest) -> Result<Value> {
 }
 
 /// Runs the stdio JSON-RPC loop until stdin closes or a shutdown request.
-pub async fn run(state_dir: std::path::PathBuf, policy: &RelayPolicy) -> Result<()> {
+/// With `keep_alive`, stdin EOF is ignored (operator-run daemon mode); the
+/// process stays up until killed or told to shut down over RPC.
+pub async fn run(
+    state_dir: std::path::PathBuf,
+    policy: &RelayPolicy,
+    keep_alive: bool,
+) -> Result<()> {
     let (endpoint, _id) = bind_endpoint(&state_dir, policy).await?;
     let _router = spawn_router(&endpoint, &state_dir);
     let endpoint = Arc::new(endpoint);
@@ -244,6 +267,13 @@ pub async fn run(state_dir: std::path::PathBuf, policy: &RelayPolicy) -> Result<
         line.clear();
         let n = reader.read_line(&mut line)?;
         if n == 0 {
+            if keep_alive {
+                // Daemon mode: stdin closed is not a shutdown signal. Park
+                // forever; the process is stopped by kill or RPC shutdown.
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                }
+            }
             break; // stdin closed: clean shutdown
         }
         let trimmed = line.trim();
