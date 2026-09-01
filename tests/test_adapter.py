@@ -87,7 +87,7 @@ def test_queue_roundtrip_via_files(adapter_env):
     task_file = queue_dir / "task-test123.json"
     task_file.write_text(json.dumps({
         "taskId": "task-test123",
-        "peerId": "inboundpeer1",
+        "peerId": "id-1",  # TLS-authenticated endpoint id of inboundpeer1
         "contextId": "ctx-9",
         "text": "Summarize the docs",
     }))

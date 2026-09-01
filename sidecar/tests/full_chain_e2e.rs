@@ -117,6 +117,28 @@ fn full_inbound_chain_quic_to_adapter_and_back() {
                     text.contains("ping from the wire"),
                     "task text should arrive intact: {text}"
                 );
+                // v0.3 inbound mapping: peerId must be the raw QUIC
+                // client's TLS-authenticated endpoint id (z32), not
+                // "unknown-peer". The raw client's id is not known here,
+                // but it is verifiable: it must be a nonempty z32 string
+                // and must be flagged as tls-authenticated.
+                let peer_id = task["peerId"].as_str().unwrap().to_string();
+                assert!(
+                    !peer_id.is_empty() && peer_id != "unknown-peer",
+                    "peerId must be the authenticated sender, got {peer_id:?}"
+                );
+                assert_eq!(
+                    task["peerIdSource"].as_str(),
+                    Some("tls-authenticated"),
+                    "task: {task}"
+                );
+                // z32 alphabet sanity check on the endpoint id.
+                assert!(
+                    peer_id
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
+                    "endpoint id should be z32-shaped: {peer_id:?}"
+                );
                 std::fs::write(
                     queue.join(format!("reply-{task_id}.json")),
                     serde_json::json!({

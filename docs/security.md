@@ -26,7 +26,11 @@ the operator must not assume.
   fields are checked; malformed input yields a structured `task.error`, never
   a panic or a pass-through.
 - **Unknown peers.** `iroh_peer_call` refuses any peer not in the store;
-  inbound tasks from unpaired endpoint ids are rejected at the adapter.
+  inbound tasks are authorized by the sender's **TLS-authenticated Iroh
+  endpoint id** (captured at the QUIC connection, not taken from envelope
+  content) mapped through the peer store — unpaired senders get a
+  structured `rejected` reply and their task is never dispatched to the
+  agent.
 - **Missing sidecar.** Calls fail closed with an actionable message rather
   than silently degrading.
 - **Bounded failures.** A peer that cannot be dialed produces a structured
@@ -43,16 +47,10 @@ the operator must not assume.
 
 ## What is deferred (do not assume it exists yet)
 
-- **Inbound peer authentication mapping.** The adapter routes tasks into the
-  gateway, but the sidecar's inbound handler does not yet map the
-  authenticated Iroh `EndpointId` to a paired peer record (tasks are tagged
-  `unknown-peer` and rejected by the adapter's peer check until the mapping
-  lands with pairing). The cryptographic transport authentication is real;
-  the peer-registry lookup on inbound is the remaining seam.
 - **Ring-based authorization (iroh-rings).** Deferred by plan §"conditional
   use": the pinned iroh-rings 0.7.0 gate would be enabled only behind a
   Hermes wrapper that fixes the `can_access` OR-bypass and `FsTransfer`
-  range-count allocation. Not wired in v0.2.
+  range-count allocation. Not wired.
 - **Pairing confirmation UX.** v0.2 trusts the operator's ticket handling.
   Human-in-the-loop confirmation and ticket expiry/single-use nonces are
   staged follow-ups.

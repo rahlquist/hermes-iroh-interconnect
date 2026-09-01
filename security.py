@@ -123,6 +123,20 @@ class PeerStore:
     def get_peer(self, peer_id: str) -> Optional[Dict[str, Any]]:
         return self._load().get(peer_id)
 
+    def find_by_endpoint_id(self, endpoint_id: str) -> Optional[str]:
+        """Resolves an authenticated Iroh endpoint id (z32) to a paired
+        peer id. Matches either the primary key or any record's
+        ``endpoint_id`` field. Returns None when unpaired (fail closed)."""
+        if not endpoint_id:
+            return None
+        peers = self._load()
+        if endpoint_id in peers:
+            return endpoint_id
+        for peer_id, record in peers.items():
+            if record.get("endpoint_id") == endpoint_id:
+                return peer_id
+        return None
+
     def list_peers(self) -> Dict[str, Dict[str, Any]]:
         return self._load()
 

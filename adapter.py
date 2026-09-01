@@ -129,6 +129,16 @@ if _HERMES_AVAILABLE:
             except Exception:
                 return False
 
+        def _resolve_peer(self, endpoint_id: str) -> Optional[str]:
+            """Maps the TLS-authenticated sender endpoint id to a paired
+            peer id. Returns None for unpaired senders (fail closed)."""
+            try:
+                from security import PeerStore
+
+                return PeerStore(self.state_dir).find_by_endpoint_id(endpoint_id)
+            except Exception:
+                return None
+
         def _process_task_file(self, path: Path) -> None:
             """Validate, frame, and dispatch one queued task file."""
             try:
@@ -139,13 +149,19 @@ if _HERMES_AVAILABLE:
                 return
 
             # The JSON taskId field is authoritative; the filename only
-            # marks the file as a task handoff.
+            # marks the file as a task handoff. peerId is the sender's
+            # TLS-authenticated endpoint id written by the sidecar — it is
+            # never taken from envelope content.
             task_id = str(task.get("taskId") or "")
-            peer_id = str(task.get("peerId") or "")
+            endpoint_id = str(task.get("peerId") or "")
             context_id = str(task.get("contextId") or task_id)
             text = str(task.get("text") or "")
 
-            if not task_id or not peer_id or not self._known_peer(peer_id):
+            peer_id = self._resolve_peer(endpoint_id)
+            if not task_id or peer_id is None:
+                logger.warning(
+                    "iroh adapter: rejected task %s from unpaired endpoint", task_id
+                )
                 self._write_reply(task_id, "rejected", "unknown or unpaired peer")
                 path.unlink(missing_ok=True)
                 return

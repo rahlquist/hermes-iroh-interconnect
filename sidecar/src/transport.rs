@@ -38,6 +38,23 @@ impl Default for TransportConfig {
     }
 }
 
+/// Authenticated identity of the remote peer, captured from the QUIC
+/// connection. The `endpoint_id` is asserted by the TLS handshake — it is
+/// NOT attacker-controlled claim data — so downstream authorization can
+/// trust it as the sender's cryptographic identity (z32 encoding).
+#[derive(Clone, Debug)]
+pub struct PeerContext {
+    pub endpoint_id: String,
+}
+
+impl PeerContext {
+    pub fn from_connection(conn: &Connection) -> Self {
+        Self {
+            endpoint_id: conn.remote_id().to_z32(),
+        }
+    }
+}
+
 /// Processes a validated task envelope and produces the reply text + status.
 ///
 /// In the sidecar binary this forwards the text to the local Hermes plugin
@@ -45,6 +62,14 @@ impl Default for TransportConfig {
 /// object makes the transport layer testable without a live agent.
 pub trait TaskEngine: Send + Sync + 'static {
     fn handle_task(&self, request: &Envelope) -> (String, String); // (text, status)
+
+    /// Same, but with the authenticated sender identity. The default
+    /// delegates to [`TaskEngine::handle_task`] so existing engines keep
+    /// compiling; engines that authorize by peer override this.
+    fn handle_task_from(&self, peer: &PeerContext, request: &Envelope) -> (String, String) {
+        let _ = peer;
+        self.handle_task(request)
+    }
 }
 
 /// Echo engine used by tests and by the bare sidecar before plugin wiring.
@@ -145,6 +170,8 @@ impl HermesHandler {
 
     async fn handle_stream(
         &self,
+        _conn: &Connection,
+        peer: &PeerContext,
         mut send: SendStream,
         mut recv: RecvStream,
     ) -> Result<()> {
@@ -171,7 +198,7 @@ impl HermesHandler {
         // Validate the envelope; malformed input produces task.error, never a panic.
         let reply = match envelope::parse(text) {
             Ok(env) => {
-                let (reply_text, status) = self.engine.handle_task(&env);
+                let (reply_text, status) = self.engine.handle_task_from(&peer, &env);
                 serde_json::json!({
                     "protocol": envelope::PROTOCOL_NAME,
                     "version": envelope::PROTOCOL_VERSION,
@@ -211,11 +238,16 @@ impl iroh::protocol::ProtocolHandler for HermesHandler {
         conn: Connection,
     ) -> Result<(), iroh::protocol::AcceptError> {
         // One bi-stream per request keeps every interaction bounded; the
-        // library never grows a queue from remote input.
+        // library never grows a queue from remote input. The sender's
+        // identity is captured once per connection (TLS-authenticated) and
+        // cloned into each per-stream task.
+        let peer = PeerContext::from_connection(&conn);
         while let Ok((send, recv)) = conn.accept_bi().await {
             let handler = self.clone();
+            let peer = peer.clone();
+            let conn = conn.clone();
             tokio::spawn(async move {
-                if let Err(e) = handler.handle_stream(send, recv).await {
+                if let Err(e) = handler.handle_stream(&conn, &peer, send, recv).await {
                     // Per-stream errors are logged and dropped; the connection
                     // stays healthy for the next request.
                     eprintln!("hermes-iroh-sidecar: stream error: {e:#}");

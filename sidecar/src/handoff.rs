@@ -32,6 +32,19 @@ impl crate::transport::TaskEngine for FileHandoffEngine {
         let (status, text) = HandoffEngine::handle_task(self, request);
         (text, status)
     }
+
+    fn handle_task_from(
+        &self,
+        peer: &crate::transport::PeerContext,
+        request: &Envelope,
+    ) -> (String, String) {
+        // The sender's endpoint id comes from the authenticated TLS
+        // handshake, not from envelope content. It is written verbatim so
+        // the adapter can authorize against the peer store; unpaired
+        // senders are rejected there (fail closed).
+        let (status, text) = FileHandoffEngine::handle_task_for(self, peer, request);
+        (text, status)
+    }
 }
 
 /// Contract shared with the Python adapter and the serve-mode wiring.
@@ -61,6 +74,26 @@ impl FileHandoffEngine {
 
 impl HandoffEngine for FileHandoffEngine {
     fn handle_task(&self, request: &Envelope) -> (String, String) {
+        // No authenticated identity available (e.g. echo/loopback paths):
+        // tagged `unknown-peer`, which the adapter rejects fail-closed.
+        self.handle_task_for(
+            &crate::transport::PeerContext {
+                endpoint_id: "unknown-peer".to_string(),
+            },
+            request,
+        )
+    }
+}
+
+impl FileHandoffEngine {
+    /// Peer-aware handoff: `peer.endpoint_id` is the TLS-authenticated
+    /// sender identity (z32). Written verbatim as the task's `peerId`; the
+    /// Python adapter maps it to a paired peer and rejects unknown ids.
+    pub fn handle_task_for(
+        &self,
+        peer: &crate::transport::PeerContext,
+        request: &Envelope,
+    ) -> (String, String) {
         let queue = self.queue_dir();
         let _ = std::fs::create_dir_all(&queue);
 
@@ -81,7 +114,8 @@ impl HandoffEngine for FileHandoffEngine {
 
         let task = json!({
             "taskId": task_id,
-            "peerId": "unknown-peer", // v0.2: pairing maps EndpointId → peer
+            "peerId": peer.endpoint_id,
+            "peerIdSource": "tls-authenticated",
             "contextId": request.request_id,
             "text": text,
         });
