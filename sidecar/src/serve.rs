@@ -60,11 +60,53 @@ fn rpc_err(id: &Value, message: String) -> String {
     .expect("serialize rpc error")
 }
 
+/// Relay policy for the endpoint (plan: relay configuration is a security
+/// decision — public relays observe connection metadata, not plaintext).
+#[derive(Debug, Clone)]
+pub enum RelayPolicy {
+    /// n0 production relays (default).
+    Default,
+    /// No relays at all: LAN-only operation; peers need direct addrs.
+    Disabled,
+    /// A single self-hosted relay URL (e.g. https://relay.example.lan).
+    CustomUrl(String),
+}
+
+impl RelayPolicy {
+    /// Parses the `--relay` CLI / config value.
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "default" | "n0" | "" => Self::Default,
+            "none" | "disabled" | "off" => Self::Disabled,
+            url => Self::CustomUrl(url.to_string()),
+        }
+    }
+}
+
+/// Builds the iroh relay mode from the policy.
+fn relay_mode(policy: &RelayPolicy) -> Result<iroh::RelayMode> {
+    match policy {
+        RelayPolicy::Default => Ok(iroh::RelayMode::Default),
+        RelayPolicy::Disabled => Ok(iroh::RelayMode::Disabled),
+        RelayPolicy::CustomUrl(url) => {
+            let relay: iroh::RelayUrl = url
+                .parse()
+                .with_context(|| format!("parsing relay url {url:?}"))?;
+            Ok(iroh::RelayMode::Custom(iroh::RelayMap::from_iter([relay])))
+        }
+    }
+}
+
 /// Binds the endpoint with the persistent identity and spawns the router.
-pub async fn bind_endpoint(state_dir: &std::path::Path) -> Result<(Endpoint, String)> {
+pub async fn bind_endpoint(
+    state_dir: &std::path::Path,
+    policy: &RelayPolicy,
+) -> Result<(Endpoint, String)> {
     let key = hermes_iroh_sidecar::identity::load_or_create(state_dir.join("endpoint.key"))?;
+    let mode = relay_mode(policy)?;
     let endpoint = Endpoint::builder(presets::Minimal)
         .secret_key(key)
+        .relay_mode(mode)
         .alpns(vec![hermes_iroh_sidecar::transport::HERMES_ALPN.to_vec()])
         .bind()
         .await
@@ -187,8 +229,8 @@ async fn handle_rpc(endpoint: &Endpoint, req: RpcRequest) -> Result<Value> {
 }
 
 /// Runs the stdio JSON-RPC loop until stdin closes or a shutdown request.
-pub async fn run(state_dir: std::path::PathBuf) -> Result<()> {
-    let (endpoint, _id) = bind_endpoint(&state_dir).await?;
+pub async fn run(state_dir: std::path::PathBuf, policy: &RelayPolicy) -> Result<()> {
+    let (endpoint, _id) = bind_endpoint(&state_dir, policy).await?;
     let _router = spawn_router(&endpoint, &state_dir);
     let endpoint = Arc::new(endpoint);
 
@@ -238,4 +280,27 @@ pub async fn run(state_dir: std::path::PathBuf) -> Result<()> {
         out.flush()?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RelayPolicy;
+
+    #[test]
+    fn parses_presets() {
+        assert!(matches!(
+            RelayPolicy::parse("default"),
+            RelayPolicy::Default
+        ));
+        assert!(matches!(RelayPolicy::parse("off"), RelayPolicy::Disabled));
+        assert!(matches!(RelayPolicy::parse(""), RelayPolicy::Default));
+    }
+
+    #[test]
+    fn parses_custom_url() {
+        match RelayPolicy::parse("https://relay.home.lan") {
+            RelayPolicy::CustomUrl(u) => assert_eq!(u, "https://relay.home.lan"),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
 }

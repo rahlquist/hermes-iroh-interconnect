@@ -15,6 +15,7 @@ all raise :class:`SidecarUnavailable` (never hang, never leak state).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import threading
 from pathlib import Path
@@ -97,6 +98,9 @@ class SidecarSession:
         argv = [self.binary_path, "serve"]
         if self.state_dir is not None:
             argv += ["--state-dir", str(self.state_dir)]
+        relay = os.environ.get("HERMES_IROH_RELAY")
+        if relay:
+            argv += ["--relay", relay]
         try:
             self.proc = subprocess.Popen(
                 argv,

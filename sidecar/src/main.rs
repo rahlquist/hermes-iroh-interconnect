@@ -68,10 +68,16 @@ fn main() -> Result<()> {
                 .and_then(|i| args.get(i + 1))
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(default_state_dir);
+            let relay = args
+                .iter()
+                .position(|a| a == "--relay")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| serve::RelayPolicy::parse(s))
+                .unwrap_or(serve::RelayPolicy::Default);
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()?;
-            runtime.block_on(serve::run(state_dir))
+            runtime.block_on(serve::run(state_dir, &relay))
         }
         Some("call") => {
             let endpoint = args

@@ -60,9 +60,11 @@ the operator must not assume.
   single-use nonces and pairing requires explicit operator confirmation
   (`confirm=true`). What remains is a UI surface for the confirmation
   prompt (currently the model must re-invoke the tool with the flag).
-- **Relay policy.** The sidecar currently uses the default relay set. Public
-  relays observe connection metadata (not plaintext); self-hosted relay
-  configuration is a follow-up.
+- **Relay policy (v0.3).** The relay set is now operator-configurable via
+  `HERMES_IROH_RELAY` / the sidecar's `--relay` flag: `default` (n0 public
+  relays), `off` (LAN-only, direct addrs required), or a self-hosted relay
+  URL. Public relays observe connection metadata (never plaintext);
+  LAN-only operation removes even that exposure.
 
 ## Known limitations
 
