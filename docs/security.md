@@ -1,8 +1,9 @@
 # Security model
 
-Scope: v0.2 — bidirectional task exchange (outbound dialing + inbound
-adapter). This document states what is enforced, what is deferred, and what
-the operator must not assume.
+Scope: v0.3-alpha — bidirectional task exchange (outbound dialing + inbound
+adapter + admission guard + operator-configurable relay). This document
+states what is enforced, what is deferred, and what the operator must not
+assume.
 
 ## Identity and trust chain
 
@@ -10,11 +11,14 @@ the operator must not assume.
    `SecretKey`; the public key is the `EndpointId`. Every QUIC connection is
    mutually authenticated by TLS 1.3 with key-anchored certificates, so a
    peer's `EndpointId` is cryptographically proven, not claimed.
-2. **Pairing (v0.1).** A `hermes-iroh://pair?peer=<id>&secret=<n>=16 chars`
-   ticket is validated *offline* by `security.validate_ticket` — scheme,
-   host, peer-id charset, and secret length are enforced before anything is
-   stored. Pairing is currently operator-driven (the operator obtains the
-   ticket out-of-band and pairs through the tool).
+2. **Pairing (v0.3).** A
+   `hermes-iroh://pair?peer=<id>&secret=...&ts=...&nonce=...` ticket is
+   validated *offline* by `security.validate_ticket` — scheme, host,
+   peer-id charset, secret length, **expiry** (15 minutes) and **nonce
+   shape** are enforced before anything is stored. The nonce is single-use
+   (`NonceStore`, 0600); replays are refused. Pairing additionally requires
+   explicit operator confirmation (`confirm=true` on the tool call) — the
+   first, unconfirmed invocation surfaces the decision instead of pairing.
 3. **Peer state.** Peers live in `<HERMES_HOME>/iroh-interconnect/peers.json`
    with mode `0600` (enforced on every write and repaired on open).
 
@@ -68,10 +72,15 @@ the operator must not assume.
 
 ## Known limitations
 
-- The sidecar spawns one serve process per `iroh_peer_call` in v0.2 (the
-  session is closed after each tool call). A persistent shared session with
-  reconnect guards is the next transport milestone.
-- The `open` ring, `FsTransfer`, and stock `Transfer::can_access` must never
-  be enabled without the wrapper fixes described in the feasibility plan.
-- `peers.json` and `endpoint.key` are plaintext at rest. Filesystem access
-  is a separate trust boundary; files are 0600 but not encrypted.
+- The sidecar's inbound admission state (replay windows, rate counters) is
+  in-memory and resets on restart. Authorization does not depend on it —
+  the adapter's peer-store check and the bounded handoff remain the
+  boundary — but a restart briefly resets rate limiting.
+- `peers.json`, `endpoint.key`, and `pairing.secret` are plaintext at rest.
+  Filesystem access is a separate trust boundary; files are 0600 but not
+  encrypted.
+- The confirmation gate is tool-arg based: the agent must re-invoke
+  `iroh_peer_pair` with `confirm=true`. A desktop UI surface for the
+  prompt is a future item.
+- The sidecar's serve process dies on stdin EOF (plugin-owned lifecycle).
+  Operator-run instances should pass `--keep-alive`.
