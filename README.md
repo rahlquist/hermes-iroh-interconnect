@@ -79,6 +79,53 @@ ticket as a bearer capability and share it only with the intended peer.
 
 ## Install
 
+The plugin is optional with respect to SendMe. The three artifact tools remain
+registered even when `sendme` is absent; they return an actionable install
+message instead of preventing the Iroh task tools from loading.
+
+```bash
+# Verify the optional dependency
+command -v sendme && sendme --version
+
+# Optional transfer operations
+# iroh_send_file: path -> ticket + transfer id
+# iroh_fetch_file: ticket + existing destination directory -> verified path
+# iroh_transfer_status: list or stop a tracked sender by transfer id
+```
+
+For a sender, keep the `sendme send` provider running until the receiver
+finishes. Tickets are bearer capabilities. Do not put them in public channels.
+
+### Relay configuration
+
+`HERMES_IROH_RELAY` applies to both the Iroh sidecar and SendMe transfers.
+The SendMe transfer tools are available only when the `sendme` executable is
+installed; otherwise they return the install/verify instructions without
+affecting task exchange.
+
+- unset, `default`, or `n0`: use the default n0 relay set;
+- `off`, `none`, or `disabled`: disable relays (direct/LAN addresses required);
+- a relay URL: use that self-hosted relay.
+
+The sidecar also accepts `--relay <default|off|URL>` and operator-run peers
+can use `--keep-alive` when stdin is not owned by the plugin.
+
+### Operator pairing flow
+
+1. Run `iroh_peer_make_ticket` on the receiving agent.
+2. Send the ticket out-of-band to the intended peer.
+3. Run `iroh_peer_pair` once without `confirm` to review the proposed trust.
+4. Re-run it with `confirm=true` to authorize the peer.
+5. Tickets expire after 15 minutes and are single-use.
+
+### CI and local verification
+
+GitHub Actions runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+`cargo test`, and the Python suite on every push and pull request. The Python
+CI job does not require Hermes source or SendMe; those are optional runtime
+integrations and have dedicated local/integration tests.
+
+
 ```bash
 # 1. Build the sidecar (requires cargo)
 cd sidecar && cargo build --release

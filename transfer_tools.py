@@ -53,7 +53,7 @@ _SENSITIVE_NAME_RE = re.compile(
 _SENSITIVE_DIR_HINTS = (".ssh", ".gnupg", ".aws", ".config/gcloud", ".bitwarden")
 
 _TICKET_RE = re.compile(
-    r"(?:sendme receive )([a-z0-9]{4,}\.[a-z0-9]+|[a-z0-9]{20,})|\b(blob[a-z0-9]{40,})\b",
+    r"(?:sendme receive )([a-z0-9]{20,})|\b(blob[a-z0-9]{40,})\b",
     re.IGNORECASE,
 )
 # Real sendme 0.36 tickets start with a scheme-like prefix (e.g. "blob");
