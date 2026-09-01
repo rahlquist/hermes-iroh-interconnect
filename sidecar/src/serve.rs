@@ -208,7 +208,7 @@ pub async fn run(state_dir: std::path::PathBuf) -> Result<()> {
         if trimmed.is_empty() {
             continue;
         }
-        let (id, method) = match serde_json::from_str::<RpcRequest>(trimmed) {
+        let (id, _method) = match serde_json::from_str::<RpcRequest>(trimmed) {
             Ok(req) => (req.id.clone(), req.method.clone()),
             Err(e) => {
                 writeln!(out, "{}", rpc_err(&Value::Null, format!("malformed request: {e}")))?;

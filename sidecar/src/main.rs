@@ -25,6 +25,7 @@ use serde_json::json;
 struct ControlRequest {
     #[serde(default)]
     #[serde(rename = "endpointId")]
+    #[allow(dead_code)] // accepted for CLI-shape compatibility; serve mode owns dialing
     endpoint_id: String,
     #[serde(default)]
     request: serde_json::Value,
@@ -44,6 +45,26 @@ fn read_stdin_json() -> Result<ControlRequest> {
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(|s| s.as_str()) {
+        Some("id") => {
+            // Print this machine's persistent endpoint id (z32) without
+            // binding any network: derive the public key from (or reuse)
+            // the persistent endpoint key, then encode it.
+            let state_dir = args
+                .iter()
+                .position(|a| a == "--state-dir")
+                .and_then(|i| args.get(i + 1))
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(default_state_dir);
+            let key = hermes_iroh_sidecar::identity::load_or_create(
+                state_dir.join("endpoint.key"),
+            )?;
+            let id = iroh::EndpointId::from(key.public());
+            println!(
+                "{}",
+                serde_json::json!({"endpointId": id.to_z32()})
+            );
+            Ok(())
+        }
         Some("serve") => {
             let state_dir = args
                 .iter()

@@ -10,6 +10,7 @@ Contract (plan §4 v1 tool surface):
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -49,13 +50,65 @@ class TestPeerList:
 
 
 class TestPeerPair:
-    def test_pairs_with_valid_ticket(self, peer_env):
-        ticket = (
-            "hermes-iroh://pair?peer=bbbbbbbbbbbbbbbb&secret=longenoughsecretvalue1"
+    @staticmethod
+    def _ticket(peer="bbbbbbbbbbbbbbbb", nonce=None):
+        import time as _time
+
+        ts = int(_time.time())
+        nonce = nonce or "ab12cd34ef56ab12cd34ef56ab12cd34"
+        return (
+            f"hermes-iroh://pair?peer={peer}"
+            f"&secret=longenoughsecretvalue1&ts={ts}&nonce={nonce}"
         )
-        out = json.loads(iroh_tools.iroh_peer_pair({"ticket": ticket}, task_id=None))
-        assert out["success"] is True
+
+    def test_requires_confirmation_before_pairing(self, peer_env):
+        out = json.loads(
+            iroh_tools.iroh_peer_pair({"ticket": self._ticket()}, task_id=None)
+        )
+        assert out["success"] is False
+        assert "confirm" in out["error"].lower()
+        # Nothing paired yet.
+        assert PeerStore(peer_env).get_peer("bbbbbbbbbbbbbbbb") is None
+
+    def test_pairs_with_valid_ticket_and_confirmation(self, peer_env):
+        out = json.loads(
+            iroh_tools.iroh_peer_pair(
+                {"ticket": self._ticket(), "confirm": True}, task_id=None
+            )
+        )
+        assert out["success"] is True, out
         assert PeerStore(peer_env).get_peer("bbbbbbbbbbbbbbbb") is not None
+
+    def test_rejects_replayed_ticket(self, peer_env):
+        ticket = self._ticket()
+        first = json.loads(
+            iroh_tools.iroh_peer_pair(
+                {"ticket": ticket, "confirm": True}, task_id=None
+            )
+        )
+        assert first["success"] is True
+        replay = json.loads(
+            iroh_tools.iroh_peer_pair(
+                {"ticket": ticket, "confirm": True}, task_id=None
+            )
+        )
+        assert replay["success"] is False
+        assert "replay" in replay["error"].lower() or "already used" in replay["error"].lower()
+
+    def test_rejects_expired_ticket(self, peer_env):
+        import time as _time
+
+        old_ts = int(_time.time()) - 3600
+        ticket = (
+            "hermes-iroh://pair?peer=bbbbbbbbbbbbbbbb"
+            "&secret=longenoughsecretvalue1"
+            f"&ts={old_ts}&nonce={'ab12cd34ef56ab12cd34ef56ab12cd34'}"
+        )
+        out = json.loads(
+            iroh_tools.iroh_peer_pair({"ticket": ticket, "confirm": True}, task_id=None)
+        )
+        assert out["success"] is False
+        assert "expired" in out["error"].lower()
 
     def test_rejects_invalid_ticket(self, peer_env):
         out = json.loads(iroh_tools.iroh_peer_pair({"ticket": "garbage"}, task_id=None))
@@ -65,6 +118,38 @@ class TestPeerPair:
     def test_requires_ticket_arg(self, peer_env):
         out = json.loads(iroh_tools.iroh_peer_pair({}, task_id=None))
         assert out["success"] is False
+
+
+class TestMakeTicket:
+    def test_issues_fresh_ticket(self, peer_env, monkeypatch):
+        # A fake sidecar binary that answers `id` offline.
+        Path(peer_env).mkdir(parents=True, exist_ok=True)
+        fake = Path(peer_env) / "fake-sidecar.sh"
+        fake.write_text(
+            "#!/bin/sh\n"
+            'echo \'{"endpointId": "ym1ba7mr7ezejfkrumg1ryxiauts1xdx5fzitwobrh9oxxuqahno"}\'\n'
+        )
+        fake.chmod(0o755)
+        monkeypatch.setenv("HERMES_IROH_SIDECAR", str(fake))
+        out = json.loads(iroh_tools.iroh_peer_make_ticket({}, task_id=None))
+        assert out["success"] is True
+        ticket = out["ticket"]
+        assert ticket.startswith("hermes-iroh://pair?")
+        assert "ts=" in ticket and "nonce=" in ticket
+        assert out["expires_in_seconds"] == 900
+        # The ticket it just issued validates and pairs end-to-end.
+        parsed = json.loads(
+            iroh_tools.iroh_peer_pair(
+                {"ticket": ticket, "confirm": True}, task_id=None
+            )
+        )
+        assert parsed["success"] is True
+
+    def test_reports_missing_identity(self, peer_env, monkeypatch):
+        monkeypatch.setenv("HERMES_IROH_SIDECAR", "/nonexistent/sidecar")
+        out = json.loads(iroh_tools.iroh_peer_make_ticket({}, task_id=None))
+        assert out["success"] is False
+        assert "endpoint" in out["error"].lower()
 
 
 class TestPeerCall:
@@ -103,6 +188,7 @@ class TestRegistration:
             "iroh_peer_status",
             "iroh_peer_list",
             "iroh_peer_pair",
+            "iroh_peer_make_ticket",
             "iroh_peer_call",
         }
         # Handlers dispatch with the real registry's args-dict convention.

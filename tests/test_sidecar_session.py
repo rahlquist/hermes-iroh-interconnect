@@ -126,6 +126,38 @@ def test_dial_real_peer_to_peer(sidecar_binary, tmp_path):
     assert "hello from A" in reply["text"]
 
 
+def test_shared_session_reuses_one_process(sidecar_binary, tmp_path):
+    """get_shared_session returns the same live session for the same key."""
+    key_dir = tmp_path / "shared"
+    s1 = sidecar_client.get_shared_session(sidecar_binary, key_dir)
+    pid1 = s1.proc.pid
+    s2 = sidecar_client.get_shared_session(sidecar_binary, key_dir)
+    assert s2 is s1
+    assert s2.proc.pid == pid1
+    sidecar_client.close_shared_sessions()
+
+
+def test_shared_session_restarts_dead_process(sidecar_binary, tmp_path):
+    """A killed sidecar is transparently restarted with the same identity."""
+    key_dir = tmp_path / "restart"
+    session = sidecar_client.get_shared_session(sidecar_binary, key_dir)
+    status1 = session.status(timeout=60)
+    session.proc.kill()
+    session.proc.wait(timeout=5)
+
+    session2 = sidecar_client.get_shared_session(sidecar_binary, key_dir)
+    status2 = session2.status(timeout=60)
+    # Persistent identity: the restarted endpoint keeps the same endpoint id.
+    assert status2["endpointId"] == status1["endpointId"]
+    sidecar_client.close_shared_sessions()
+
+
+def test_shared_sessions_teardown(sidecar_binary, tmp_path):
+    sidecar_client.get_shared_session(sidecar_binary, tmp_path / "t1")
+    sidecar_client.close_shared_sessions()
+    assert sidecar_client._shared_sessions == {}
+
+
 def test_unused_import_guard():
     # Keep the module's subprocess usage honest (used for kill on close).
     assert hasattr(sidecar_client, "subprocess")

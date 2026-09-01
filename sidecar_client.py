@@ -188,3 +188,43 @@ class SidecarSession:
             {"endpointId": endpoint_id, "addrs": addrs, "task": {"text": text}},
             timeout=timeout,
         )
+
+
+# ---------------------------------------------------------------------------
+# Shared persistent session (one serve process per profile)
+# ---------------------------------------------------------------------------
+
+_shared_lock = threading.Lock()
+_shared_sessions: Dict[str, "SidecarSession"] = {}
+
+
+def get_shared_session(binary_path: str, state_dir: Optional[Path] = None) -> "SidecarSession":
+    """Returns the profile's long-lived serve session, starting or restarting
+    it as needed.
+
+    Keyed by (binary_path, state_dir). A session whose process has died is
+    transparently restarted on the next call — the sidecar's persistent
+    endpoint key means the restarted endpoint keeps the same identity, so
+    paired peers are unaffected.
+    """
+    key = f"{binary_path}::{state_dir}"
+    with _shared_lock:
+        session = _shared_sessions.get(key)
+        if session is None:
+            session = SidecarSession(binary_path, state_dir=state_dir)
+            session.start()
+            _shared_sessions[key] = session
+            return session
+        if session.proc is None or session.proc.poll() is not None:
+            # Dead process: restart with the same persistent identity.
+            session.close()
+            session.start()
+        return session
+
+
+def close_shared_sessions() -> None:
+    """Tears down all shared sessions (used at plugin shutdown/tests)."""
+    with _shared_lock:
+        for session in _shared_sessions.values():
+            session.close()
+        _shared_sessions.clear()
