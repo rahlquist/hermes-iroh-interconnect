@@ -36,13 +36,18 @@ fn writes_task_and_reads_reply() {
         // Simulate the Python adapter: pick up the task file, write a reply.
         let queue = state_dir.join("queue");
         for _ in 0..100 {
-            let found = std::fs::read_dir(&queue)
-                .unwrap()
-                .filter_map(|e| e.ok())
-                .find(|e| {
-                    e.file_name().to_string_lossy().starts_with("task-")
-                        && !e.file_name().to_string_lossy().ends_with(".tmp")
-                });
+            let found = match std::fs::read_dir(&queue) {
+                Ok(rd) => rd,
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+            }
+            .filter_map(|e| e.ok())
+            .find(|e| {
+                e.file_name().to_string_lossy().starts_with("task-")
+                    && !e.file_name().to_string_lossy().ends_with(".tmp")
+            });
             if let Some(entry) = found {
                 // The file may vanish between listing and reading (the
                 // engine cleans up after the deadline); retry the scan.
@@ -91,10 +96,15 @@ fn task_file_contains_peer_and_context() {
     let inspector = std::thread::spawn(move || {
         let queue = state_dir.join("queue");
         for _ in 0..100 {
-            let found = std::fs::read_dir(&queue)
-                .unwrap()
-                .filter_map(|e| e.ok())
-                .find(|e| e.file_name().to_string_lossy().starts_with("task-"));
+            let found = match std::fs::read_dir(&queue) {
+                Ok(rd) => rd,
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+            }
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name().to_string_lossy().starts_with("task-"));
             if let Some(entry) = found {
                 let task: serde_json::Value =
                     serde_json::from_str(&std::fs::read_to_string(entry.path()).unwrap()).unwrap();
