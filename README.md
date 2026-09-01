@@ -1,12 +1,13 @@
 # hermes-iroh-interconnect
 
+Connect your Hermes agents directly over the internet or across private networks. This plugin gives one Hermes agent a secure, authenticated way to send another agent a task, receive the result, and optionally exchange files through SendMe — without relying on a central message broker or cloud service. You gain persistent agent identities, explicit operator-approved pairing, encrypted QUIC transport with NAT traversal and relay fallback, inbound peer authorization, replay/rate/concurrency protection, and a native Hermes platform adapter. In practical terms: your agents can collaborate as peers, delegate work across machines, and pass artifact-transfer tickets while retaining control over who is trusted and what leaves each host.
+
 > [!WARNING]
 > **Alpha software.** This plugin is under active development. The wire
-> protocol (`hermes-interconnect` v1) may change without migration, inbound
-> peer authentication mapping is not yet wired (see `docs/security.md`),
-> and it has not been hardened against adversarial peers outside the test
-> suite. Do not connect it to untrusted agents. Pin the exact commit you
-> install and re-read `docs/security.md` before enabling inbound use.
+> protocol (`hermes-interconnect` v1) may change without migration, and it
+> has not been hardened against adversarial peers outside the test suite.
+> Do not connect it to untrusted agents. Pin the exact commit you install
+> and re-read `docs/security.md` before enabling inbound use.
 
 Agent interconnect for [Hermes Agent](https://github.com/NousResearch/hermes-agent)
 over [Iroh](https://github.com/n0-computer/iroh): dial-by-key QUIC with NAT
