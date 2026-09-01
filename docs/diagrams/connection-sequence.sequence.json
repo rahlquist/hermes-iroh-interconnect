@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {"title":"How a Hermes Agent Call Connects","subtitle":"Identity, discovery, authentication, task, reply"},
+  "participants": [
+    {"id":"a","type":"frontend","label":"Agent A","sublabel":"iroh_peer_call"},
+    {"id":"sa","type":"backend","label":"Sidecar A","sublabel":"Iroh client"},
+    {"id":"r","type":"cloud","label":"Relay","sublabel":"discovery / address"},
+    {"id":"sb","type":"backend","label":"Sidecar B","sublabel":"Iroh server"},
+    {"id":"b","type":"frontend","label":"Agent B","sublabel":"Hermes adapter"}
+  ],
+  "segments": [
+    {"from":160,"to":300,"label":"01 / LOCATE"},
+    {"from":300,"to":450,"label":"02 / CONNECT"},
+    {"from":450,"to":650,"label":"03 / EXCHANGE"}
+  ],
+  "messages": [
+    {"from":"a","to":"sa","y":190,"label":"send task"},
+    {"from":"sa","to":"r","y":250,"label":"find current path","variant":"dashed"},
+    {"from":"sa","to":"sb","y":340,"label":"QUIC/TLS: prove EndpointId","variant":"security"},
+    {"from":"sb","to":"b","y":400,"label":"deliver task"},
+    {"from":"b","to":"sb","y":500,"label":"task result"},
+    {"from":"sb","to":"sa","y":570,"label":"encrypted reply","variant":"return"},
+    {"from":"sa","to":"a","y":630,"label":"return result","variant":"return"}
+  ],
+  "activations": [
+    {"participant":"sa","from":180,"to":650,"type":"backend"},
+    {"participant":"sb","from":330,"to":590,"type":"backend"},
+    {"participant":"b","from":400,"to":510,"type":"frontend"}
+  ],
+  "cards": []
+}

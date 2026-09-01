@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {"title": "Hermes–Iroh Interconnect", "subtitle": "What runs where"},
+  "components": [
+    {"id":"agent_a","type":"frontend","label":"Hermes Agent A","sublabel":"Python plugin", "pos":[40,250]},
+    {"id":"sidecar_a","type":"backend","label":"Rust Sidecar A","sublabel":"Iroh endpoint", "pos":[230,250]},
+    {"id":"relay","type":"cloud","label":"Iroh Relay","sublabel":"discovery / fallback", "pos":[420,90]},
+    {"id":"sidecar_b","type":"backend","label":"Rust Sidecar B","sublabel":"Iroh endpoint", "pos":[610,250]},
+    {"id":"agent_b","type":"frontend","label":"Hermes Agent B","sublabel":"Python plugin + adapter", "pos":[800,250]}
+  ],
+  "boundaries": [
+    {"kind":"security-group","label":"Machine A","wraps":["agent_a","sidecar_a"]},
+    {"kind":"security-group","label":"Machine B","wraps":["sidecar_b","agent_b"]}
+  ],
+  "connections": [
+    {"from":"agent_a","to":"sidecar_a","label":"stdio JSON-RPC","labelDy":-24},
+    {"from":"sidecar_a","to":"sidecar_b","label":"encrypted QUIC / Hermes ALPN","variant":"emphasis"},
+    {"from":"sidecar_a","to":"relay","label":"discovery / fallback","variant":"dashed"},
+    {"from":"sidecar_b","to":"relay","label":"discovery / fallback","variant":"dashed"},
+    {"from":"sidecar_b","to":"agent_b","label":"file handoff + adapter","labelDy":-24}
+  ],
+  "cards": []
+}

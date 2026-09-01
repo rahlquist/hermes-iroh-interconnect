@@ -63,6 +63,38 @@ sendme --version
 A SendMe sender must remain running until the receiver completes. Treat its
 ticket as a bearer capability and share it only with the intended peer.
 
+## How the connection works
+
+You do not connect to a ticket. A ticket is used once to pair two agents and
+approve trust. After pairing, the receiving agent remembers the peer's stable
+EndpointId. When a task is sent, Iroh uses that EndpointId to discover a
+current network path, tries a direct encrypted QUIC connection, and can use a
+relay when the two machines cannot connect directly. The relay helps locate or
+forward traffic; it does not become the agent's identity and cannot read the
+encrypted task contents.
+
+The connection has two layers of protection:
+
+1. **Iroh authentication** proves that the remote machine owns the private key
+   belonging to the expected EndpointId.
+2. **Hermes authorization** checks that EndpointId against the locally paired
+   peer store, then applies replay, rate, and concurrency limits before the
+   task reaches the agent.
+
+If the network briefly disappears, the current task can fail or time out. The
+sidecar stays available and a later task makes a fresh dial attempt; pairing
+does not need to be repeated. Automatic retries are intentionally limited so a
+non-idempotent task is not silently run twice.
+
+### Connection diagrams
+
+- [Architecture: what runs on each machine](docs/diagrams/interconnect-architecture.html)
+- [Sequence: how one task is located, authenticated, and returned](docs/diagrams/connection-sequence.html)
+
+The diagrams are also available as editable Archify source files in
+`docs/diagrams/`. GitHub does not render standalone HTML files inside the
+repository view; open them locally or publish them with GitHub Pages.
+
 ## What's verified (v0.3-alpha)
 
 - Two live sidecar processes dial each other over real QUIC and exchange
