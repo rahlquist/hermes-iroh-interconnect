@@ -57,8 +57,12 @@ class SidecarClient:
         """Send one request, return the parsed reply dict."""
         payload = json.dumps({"endpointId": endpoint_id, "request": request}).encode("utf-8")
         try:
+            relay = os.environ.get("HERMES_IROH_RELAY")
+            argv = [self.binary_path, "call", "--endpoint", endpoint_id]
+            if relay:
+                argv += ["--relay", relay]
             proc = subprocess.run(
-                [self.binary_path, "call", "--endpoint", endpoint_id],
+                argv,
                 input=payload,
                 capture_output=True,
                 timeout=max(1, int(timeout_secs)),
