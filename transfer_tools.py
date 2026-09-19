@@ -33,7 +33,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from security import redact_outbound
+from .security import redact_outbound
 
 __all__ = [
     "sendme_available",

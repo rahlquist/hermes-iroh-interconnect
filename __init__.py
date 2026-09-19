@@ -24,8 +24,11 @@ def register(ctx) -> None:
     """Plugin entry point — called by the Hermes plugin system."""
     # 1) Client tools (outbound).
     try:
-        from .peer_tools import register_tools
-
+        try:
+            from .peer_tools import register_tools
+        except ImportError:
+            # Loaded as a standalone module (e.g. ~/.hermes/plugins/), not a package.
+            from peer_tools import register_tools
         register_tools(ctx)
         logger.info("hermes-iroh-interconnect: client tools registered")
     except Exception:
@@ -36,7 +39,10 @@ def register(ctx) -> None:
 
     # 2) Inbound platform adapter.
     try:
-        from .adapter import IrohAdapter
+        try:
+            from .adapter import IrohAdapter
+        except ImportError:
+            from adapter import IrohAdapter
 
         ctx.register_platform(
             name="iroh",
