@@ -287,17 +287,38 @@ def iroh_send_file(args: dict, **_: Any) -> str:
     }
     _save_transfers(transfers)
 
+    delivery = None
+    peer_id = str(args.get("peer") or args.get("peer_id") or "").strip()
+    if peer_id:
+        # Optional one-call delivery: the paired peer receives a normal Iroh
+        # task containing the bearer ticket and can invoke its local fetch
+        # tool. Keep the provider alive regardless of task delivery outcome.
+        try:
+            try:
+                from .peer_tools import iroh_peer_call
+            except ImportError:  # standalone test/import mode
+                from peer_tools import iroh_peer_call
+            destination = str(args.get("dest") or "/home/rahlquist/").strip()
+            delivery = json.loads(iroh_peer_call({
+                "peer": peer_id,
+                "message": (
+                    "Receive the file transfer below with iroh_fetch_file. "
+                    f"Destination: {destination}\\nTicket: {ticket}"
+                ),
+            }))
+        except Exception as exc:
+            delivery = {"success": False, "error": str(exc)}
+
     return _ok(
         {
             "transfer_id": transfer_id,
             "ticket": ticket,
             "hash": content_hash,
             "path": str(path),
+            "delivery": delivery,
             "note": (
                 "The ticket is a bearer capability while the provider runs. "
-                "Share it with the peer (e.g. via iroh_peer_call text); the "
-                "receiver runs iroh_fetch_file with it. The provider must "
-                "stay running until the fetch completes."
+                "The provider must stay running until the fetch completes."
             ),
         }
     )
