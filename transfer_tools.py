@@ -359,25 +359,38 @@ def iroh_fetch_file(args: dict, **_: Any) -> str:
         return json.dumps(sendme_install_hint())
 
     cmd = [binary, "receive", ticket, "--no-progress"] + _relay_flag()
+    proc = None
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=int(os.environ.get("HERMES_IROH_FETCH_TIMEOUT", "600")),
-            check=False,
+            start_new_session=True,
             cwd=str(dest),
         )
+        timeout = int(os.environ.get("HERMES_IROH_FETCH_TIMEOUT", "600"))
+        stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
+        if proc is not None:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+                proc.communicate(timeout=5)
+            except (ProcessLookupError, PermissionError, subprocess.TimeoutExpired):
+                try:
+                    proc.kill()
+                    proc.communicate(timeout=5)
+                except Exception:
+                    pass
         return _err(
-            "receive timed out; no complete result is reported — the sender "
-            "may have gone offline (its provider must stay running)"
+            "receive timed out; the receive process was terminated and no "
+            "complete result is reported — the sender may have gone offline"
         )
     except OSError as exc:
         return _err(f"failed to run sendme receive: {exc}")
 
     if proc.returncode != 0:
-        stderr = (proc.stderr or proc.stdout or "").strip()
+        stderr = (stderr or stdout or "").strip()
         return _err(
             f"sendme receive failed (exit {proc.returncode}): {stderr[:500]}. "
             "Leftover .sendme-* state in the destination is resumable."
@@ -386,7 +399,7 @@ def iroh_fetch_file(args: dict, **_: Any) -> str:
     # Verify the exact exported path first. Falling back to newest-entry
     # selection would misreport an older directory when the destination
     # already contains unrelated Hermes state (for example ~/.hermes).
-    output = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    output = (stdout or "") + "\n" + (stderr or "")
     result = _exported_path(dest, output)
     if result is None:
         entries = [p for p in dest.iterdir() if not p.name.startswith(".sendme")]
