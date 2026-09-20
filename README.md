@@ -165,10 +165,23 @@ reachability from every client before pairing.
 `sendme send` is an interactive long-lived provider. The plugin requires the
 Unix `script` utility so it can keep SendMe's pseudo-terminal alive after the
 Hermes tool returns. On relay-disabled/LAN-only setups, the plugin requests an
-addresses-only ticket automatically. The receiver must run before the sender's
-tracked provider is stopped. Relay startup is allowed up to 90 seconds by
+addresses-only ticket automatically. Relay startup is allowed up to 90 seconds by
 `iroh_send_file`; override with `HERMES_IROH_SEND_TIMEOUT` when operating over
 slow or filtered networks.
+
+For a paired Hermes peer, pass `peer` and `dest` to `iroh_send_file`:
+
+```json
+{"path":"/path/to/file.md","peer":"<peer-endpoint-id>","dest":"/home/rahlquist"}
+```
+
+This is the open-pipeline path: the sender starts the provider, sends the
+bearer ticket over the authenticated Iroh task channel, and the receiving
+adapter fetches it automatically into the requested existing directory. The
+provider remains tracked until the fetch request completes.
+
+Without `peer`, `iroh_send_file` retains the ticket-only behavior for manual
+or non-Hermes SendMe receivers.
 
 ### Hermes systemd drop-in for relay env
 
