@@ -166,7 +166,9 @@ reachability from every client before pairing.
 Unix `script` utility so it can keep SendMe's pseudo-terminal alive after the
 Hermes tool returns. On relay-disabled/LAN-only setups, the plugin requests an
 addresses-only ticket automatically. The receiver must run before the sender's
-tracked provider is stopped.
+tracked provider is stopped. Relay startup is allowed up to 90 seconds by
+`iroh_send_file`; override with `HERMES_IROH_SEND_TIMEOUT` when operating over
+slow or filtered networks.
 
 ### Hermes systemd drop-in for relay env
 

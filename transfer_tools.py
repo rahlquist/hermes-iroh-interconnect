@@ -240,7 +240,11 @@ def iroh_send_file(args: dict, **_: Any) -> str:
 
     ticket = None
     content_hash = None
-    deadline = time.time() + 20
+    # Relay startup can legitimately exceed 20 seconds on a cold endpoint or
+    # after a gateway restart. Keep the provider alive while Iroh finishes
+    # its home-relay connection instead of reporting a false failure.
+    send_timeout = max(20, int(os.environ.get("HERMES_IROH_SEND_TIMEOUT", "90")))
+    deadline = time.time() + send_timeout
     while time.time() < deadline:
         try:
             output = log_path.read_text(encoding="utf-8", errors="replace")
@@ -266,7 +270,7 @@ def iroh_send_file(args: dict, **_: Any) -> str:
         except (ProcessLookupError, PermissionError):
             pass
         return _err(
-            "sendme started but no ticket was produced within 20s "
+            f"sendme started but no ticket was produced within {send_timeout}s "
             f"(exit code {proc.poll()}); no transfer is active"
         )
 
