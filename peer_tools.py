@@ -27,15 +27,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .security import (
-    TICKET_MAX_AGE_SECONDS,
-    InvalidTicket,
-    NonceStore,
-    PeerStore,
-    redact_outbound,
-    validate_ticket,
-)
-from .transfer_tools import iroh_fetch_file, iroh_send_file, iroh_transfer_status
+try:
+    from .security import (
+        TICKET_MAX_AGE_SECONDS,
+        InvalidTicket,
+        NonceStore,
+        PeerStore,
+        redact_outbound,
+        validate_ticket,
+    )
+    from .transfer_tools import iroh_fetch_file, iroh_send_file, iroh_transfer_status
+except ImportError:  # standalone test/import mode
+    from security import (
+        TICKET_MAX_AGE_SECONDS,
+        InvalidTicket,
+        NonceStore,
+        PeerStore,
+        redact_outbound,
+        validate_ticket,
+    )
+    from transfer_tools import iroh_fetch_file, iroh_send_file, iroh_transfer_status
 
 __all__ = [
     "register_tools",

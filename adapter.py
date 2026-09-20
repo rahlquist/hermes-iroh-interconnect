@@ -30,7 +30,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .security import redact_outbound, wrap_inbound
+try:
+    from .security import redact_outbound, wrap_inbound
+except ImportError:  # standalone test/import mode
+    from security import redact_outbound, wrap_inbound
 
 try:  # The adapter only imports Hermes internals when running inside Hermes.
     from gateway.platforms.base import (

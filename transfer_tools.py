@@ -33,7 +33,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .security import redact_outbound
+try:
+    from .security import redact_outbound
+except ImportError:
+    from security import redact_outbound
 
 __all__ = [
     "sendme_available",
@@ -208,48 +211,50 @@ def iroh_send_file(args: dict, **_: Any) -> str:
         return json.dumps(sendme_install_hint())
 
     cmd = [binary, "send", "--no-progress", str(path)] + _relay_flag()
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            start_new_session=True,
-        )
-    except OSError as exc:
-        return _err(f"failed to start sendme send: {exc}")
-
-    # Capture the ticket line with a bounded wait (the provider stays alive
-    # after printing it).
     ticket = None
     content_hash = None
-    deadline = time.time() + 20
+    proc = None
+    # sendme uses crossterm which panics when stdout is not a TTY.
+    # Write to a temp file instead of a pipe, then read it back.
+    import tempfile
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".sendme-out", delete=False
+    ) as tmp:
+        tmp_path = tmp.name
     try:
-        while time.time() < deadline:
-            if proc.stdout is None:
-                break
-            remaining = max(0.0, deadline - time.time())
-            ready, _, _ = select.select([proc.stdout], [], [], min(0.25, remaining))
-            if not ready:
-                if proc.poll() is not None:
+        with open(tmp_path, "w") as log_file:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            try:
+                proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                pass
+
+        with open(tmp_path, "r") as fh:
+            for line in fh:
+                line = line.strip()
+                h = _HASH_RE.search(line)
+                if h and content_hash is None:
+                    content_hash = h.group(1)
+                t = _TICKET_RE.search(line)
+                if t:
+                    ticket = t.group(1) or t.group(2)
                     break
-                continue
-            line = proc.stdout.readline()
-            if not line:
-                if proc.poll() is not None:
-                    break
-                continue
-            h = _HASH_RE.search(line)
-            if h and content_hash is None:
-                content_hash = h.group(1)
-            t = _TICKET_RE.search(line)
-            if t:
-                ticket = t.group(1) or t.group(2)
-                break
     finally:
-        if ticket is None:
-            # Never leave a half-started provider behind.
-            proc.kill()
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        if ticket is None and proc is not None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
 
     if ticket is None:
         return _err(
