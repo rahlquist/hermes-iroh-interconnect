@@ -301,7 +301,7 @@ def iroh_send_file(args: dict, **_: Any) -> str:
             destination = str(args.get("dest") or "/home/rahlquist/").strip()
             delivery = json.loads(iroh_peer_call({
                 "peer": peer_id,
-                "message": "HERMES_IROH_AUTO_FETCH\\n" + json.dumps({
+                "message": "HERMES_IROH_AUTO_FETCH\n" + json.dumps({
                     "ticket": ticket,
                     "dest": destination,
                 }),
