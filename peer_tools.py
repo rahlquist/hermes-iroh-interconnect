@@ -289,11 +289,18 @@ def iroh_peer_call(args: dict, **_: Any) -> str:
     # Outbound redaction is defense in depth (plan §7).
     safe_message = redact_outbound(message)
 
-    from .sidecar_client import (
-        SidecarUnavailable,
-        default_sidecar_path,
-        get_shared_session,
-    )
+    try:
+        from .sidecar_client import (
+            SidecarUnavailable,
+            default_sidecar_path,
+            get_shared_session,
+        )
+    except ImportError:  # standalone test/import mode
+        from sidecar_client import (
+            SidecarUnavailable,
+            default_sidecar_path,
+            get_shared_session,
+        )
 
     try:
         binary = os.environ.get("HERMES_IROH_SIDECAR") or default_sidecar_path()

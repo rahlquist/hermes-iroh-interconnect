@@ -27,7 +27,9 @@ import json
 import os
 import re
 import select
+import shlex
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -211,52 +213,55 @@ def iroh_send_file(args: dict, **_: Any) -> str:
         return json.dumps(sendme_install_hint())
 
     cmd = [binary, "send", "--no-progress", str(path)] + _relay_flag()
+    # SendMe's copy-command prompt uses crossterm and exits when stdin is not
+    # a TTY. `script` gives it a persistent pseudo-terminal while keeping the
+    # provider detached from the gateway process. The provider must remain
+    # alive after this tool returns so a peer can fetch the ticket.
+    if shutil.which("script") is None:
+        return _err("sendme requires the 'script' utility to keep its provider TTY alive")
+    if os.environ.get("HERMES_IROH_RELAY", "").strip().lower() in {"off", "disabled", "none"}:
+        cmd += ["--ticket-type", "addresses"]
+
+    state_dir = _state_dir()
+    state_dir.mkdir(parents=True, exist_ok=True)
+    transfer_nonce = f"{int(time.time())}-{os.getpid()}"
+    log_path = state_dir / f"sendme-{transfer_nonce}.log"
+    script_cmd = " ".join(shlex.quote(part) for part in cmd)
+    proc = subprocess.Popen(
+        ["script", "-qefc", script_cmd, str(log_path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
     ticket = None
     content_hash = None
-    proc = None
-    # sendme uses crossterm which panics when stdout is not a TTY.
-    # Write to a temp file instead of a pipe, then read it back.
-    import tempfile
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".sendme-out", delete=False
-    ) as tmp:
-        tmp_path = tmp.name
-    try:
-        with open(tmp_path, "w") as log_file:
-            proc = subprocess.Popen(
-                cmd,
-                stdin=subprocess.DEVNULL,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-            try:
-                proc.wait(timeout=20)
-            except subprocess.TimeoutExpired:
-                pass
-
-        with open(tmp_path, "r") as fh:
-            for line in fh:
-                line = line.strip()
-                h = _HASH_RE.search(line)
-                if h and content_hash is None:
-                    content_hash = h.group(1)
-                t = _TICKET_RE.search(line)
-                if t:
-                    ticket = t.group(1) or t.group(2)
-                    break
-    finally:
+    deadline = time.time() + 20
+    while time.time() < deadline:
         try:
-            os.unlink(tmp_path)
+            output = log_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
-            pass
-        if ticket is None and proc is not None:
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
+            output = ""
+        for line in output.splitlines():
+            h = _HASH_RE.search(line)
+            if h and content_hash is None:
+                content_hash = h.group(1)
+            t = _TICKET_RE.search(line)
+            if t:
+                ticket = t.group(1) or t.group(2)
+                break
+        if ticket:
+            break
+        if proc.poll() is not None:
+            break
+        time.sleep(0.1)
 
     if ticket is None:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
         return _err(
             "sendme started but no ticket was produced within 20s "
             f"(exit code {proc.poll()}); no transfer is active"
@@ -266,6 +271,7 @@ def iroh_send_file(args: dict, **_: Any) -> str:
     transfers = _load_transfers()
     transfers[transfer_id] = {
         "pid": proc.pid,
+        "log": str(log_path),
         "path": str(path),
         "ticket": ticket,
         "hash": content_hash,
@@ -373,10 +379,16 @@ def iroh_transfer_status(args: dict, **_: Any) -> str:
         stopped = False
         if pid is not None:
             try:
-                os.kill(int(pid), 15)
+                os.killpg(int(pid), signal.SIGTERM)
                 stopped = True
             except (ProcessLookupError, PermissionError, ValueError):
                 stopped = False
+        log_path = record.get("log")
+        if log_path:
+            try:
+                Path(log_path).unlink()
+            except OSError:
+                pass
         record["status"] = "stopped" if stopped else "already-exited"
         transfers[stop_id] = record
         _save_transfers(transfers)

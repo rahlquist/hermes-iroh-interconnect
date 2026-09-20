@@ -32,6 +32,11 @@ use hermes_iroh_sidecar::transport::{HermesHandler, PeerReply};
 /// address (plan Phase 1 step 7: endpoint.online() timeout).
 const ONLINE_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// A public relay used when the endpoint is in default-relay mode. Minimal
+/// endpoints do not enable DNS address discovery, so dial addresses must carry
+/// a relay explicitly when a peer record has no direct socket addresses.
+const DEFAULT_RELAY_URL: &str = "https://use1-1.relay.n0.iroh.link";
+
 /// One stdio JSON-RPC request.
 #[derive(Debug, Deserialize)]
 struct RpcRequest {
@@ -165,10 +170,17 @@ fn endpoint_addr(id_z32: &str, addrs: &[String]) -> Result<EndpointAddr> {
         id: public,
         addrs: set,
     };
-    if let Ok(relay) = std::env::var("HERMES_IROH_RELAY") {
-        if let Ok(parsed) = relay.parse::<iroh::RelayUrl>() {
-            addr = addr.with_relay_url(parsed);
-        }
+    let relay = std::env::var("HERMES_IROH_RELAY").unwrap_or_default();
+    let relay = match relay.trim().to_ascii_lowercase().as_str() {
+        "" | "default" | "n0" => Some(DEFAULT_RELAY_URL),
+        "disabled" | "off" | "none" => None,
+        _ => Some(relay.trim()),
+    };
+    if let Some(relay) = relay {
+        let parsed = relay
+            .parse::<iroh::RelayUrl>()
+            .with_context(|| format!("parsing relay url {relay:?}"))?;
+        addr = addr.with_relay_url(parsed);
     }
     Ok(addr)
 }
