@@ -178,12 +178,17 @@ class TestPeerCall:
 class TestRegistration:
     def test_register_tools_via_ctx(self, peer_env, monkeypatch):
         registered = {}
+        schemas = {}
 
         class FakeCtx:
             def register_tool(self, name, toolset, schema, handler, **kwargs):
                 registered[name] = handler
+                schemas[name] = schema
 
         iroh_tools.register_tools(FakeCtx())
+        send_props = schemas["iroh_send_file"]["parameters"]["properties"]
+        assert {"peer", "dest"} <= set(send_props)
+
         assert set(registered) == {
             "iroh_peer_status",
             "iroh_peer_list",
