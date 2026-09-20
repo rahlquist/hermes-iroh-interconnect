@@ -15,7 +15,7 @@ import json
 import pytest
 
 import adapter as iroh_adapter
-from .security import PeerStore
+from security import PeerStore
 
 
 class FakeGatewayConfig:

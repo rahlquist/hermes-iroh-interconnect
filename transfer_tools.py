@@ -147,7 +147,10 @@ def _load_transfers() -> Dict[str, Dict[str, Any]]:
 
 
 def _save_transfers(data: Dict[str, Dict[str, Any]]) -> None:
-    from security import _atomic_json_write
+    try:
+        from .security import _atomic_json_write
+    except ImportError:  # standalone test/import mode
+        from security import _atomic_json_write
 
     path = _transfers_file()
     path.parent.mkdir(parents=True, exist_ok=True)
