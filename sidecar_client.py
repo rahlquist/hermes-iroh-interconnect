@@ -111,6 +111,7 @@ class SidecarSession:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
+                env=os.environ.copy(),
                 text=True,
                 bufsize=1,
             )

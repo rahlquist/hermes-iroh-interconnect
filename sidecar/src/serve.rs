@@ -161,10 +161,16 @@ fn endpoint_addr(id_z32: &str, addrs: &[String]) -> Result<EndpointAddr> {
             .with_context(|| format!("parsing peer address {raw:?}"))?;
         set.insert(TransportAddr::Ip(addr));
     }
-    Ok(EndpointAddr {
+    let mut addr = EndpointAddr {
         id: public,
         addrs: set,
-    })
+    };
+    if let Ok(relay) = std::env::var("HERMES_IROH_RELAY") {
+        if let Ok(parsed) = relay.parse::<iroh::RelayUrl>() {
+            addr = addr.with_relay_url(parsed);
+        }
+    }
+    Ok(addr)
 }
 
 async fn handle_rpc(endpoint: &Endpoint, req: RpcRequest) -> Result<Value> {
