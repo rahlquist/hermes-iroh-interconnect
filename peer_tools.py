@@ -419,9 +419,9 @@ def register_tools(ctx: Any) -> None:
         schema={
             "name": "iroh_send_file",
             "description": (
-                "Share one file or directory with a peer over iroh-blobs "
-                "(via the SendMe CLI, if installed) and get a transfer "
-                "ticket. Optional feature: requires sendme on this machine; "
+                "Share one file or directory over iroh-blobs. Pass peer and dest for "
+                "automatic delivery to a paired Hermes instance; omit them "
+                "for a manual SendMe ticket. Requires sendme on this machine; "
                 "otherwise returns install instructions."
             ),
             "parameters": {
@@ -437,6 +437,14 @@ def register_tools(ctx: Any) -> None:
                             "Explicitly authorize sharing a path that "
                             "matches sensitive-material patterns"
                         ),
+                    },
+                    "peer": {
+                        "type": "string",
+                        "description": "Optional paired peer endpoint id for automatic delivery",
+                    },
+                    "dest": {
+                        "type": "string",
+                        "description": "Existing destination directory on the paired peer",
                     },
                 },
                 "required": ["path"],
