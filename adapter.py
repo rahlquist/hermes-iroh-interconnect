@@ -31,9 +31,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 try:
-    from .security import redact_outbound, wrap_inbound
+    from .security import PeerStore, redact_outbound, wrap_inbound
 except ImportError:  # standalone test/import mode
-    from security import redact_outbound, wrap_inbound
+    from security import PeerStore, redact_outbound, wrap_inbound
 
 try:  # The adapter only imports Hermes internals when running inside Hermes.
     from gateway.platforms.base import (
@@ -126,8 +126,6 @@ if _HERMES_AVAILABLE:
 
         def _known_peer(self, peer_id: str) -> bool:
             try:
-                from security import PeerStore
-
                 return peer_id in PeerStore(self.state_dir).list_peers()
             except Exception:
                 return False
@@ -136,8 +134,6 @@ if _HERMES_AVAILABLE:
             """Maps the TLS-authenticated sender endpoint id to a paired
             peer id. Returns None for unpaired senders (fail closed)."""
             try:
-                from security import PeerStore
-
                 return PeerStore(self.state_dir).find_by_endpoint_id(endpoint_id)
             except Exception:
                 return None
