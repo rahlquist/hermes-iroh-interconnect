@@ -54,9 +54,8 @@ jobs:
         run: cargo build
       - name: Run plugin tests
         run: |
-          python -m pip install pytest
-          # These require a live Hermes source checkout; the plugin's
-          # standalone tests remain fully runnable in CI.
+          python -m pip install pytest PyYAML
+          # Integration tests require a live Hermes source checkout; all
+          # standalone adapter, security, transfer, and sidecar tests run.
           python -m pytest tests/ -q \
-            --ignore=tests/test_hermes_integration.py \
-            --ignore=tests/test_adapter.py
+            --ignore=tests/test_hermes_integration.py
