@@ -140,51 +140,33 @@ affecting task exchange.
 The sidecar also accepts `--relay <default|off|URL>` and operator-run peers
 can use `--keep-alive` when stdin is not owned by the plugin.
 
-#### Self-hosted relay with self-signed TLS
+#### Self-hosted relay
 
-The n0 public relays (`relay.iroh.network`) are **not reachable from all
-networks**. You can self-host a relay on any machine with a public IP:
+Use the default n0 relays first. They work across unrelated networks without
+requiring inbound firewall rules on either endpoint. A self-hosted relay is an
+optional fallback, but it must use a real DNS name and a publicly trusted TLS
+certificate. A self-signed HTTPS relay is not accepted by the Rust relay client
+by default; do not deploy one and expect `http://` to be an insecure alias.
+
+For a self-hosted deployment, follow the version-matched
+[`iroh-relay` configuration reference](https://docs.iroh.computer/deployment/dedicated-infrastructure),
+then set the same HTTPS URL on every endpoint:
 
 ```bash
-# Install iroh-relay
-cargo install iroh-relay --features server
-
-# Create a config with self-signed TLS
-mkdir -p /root/relay-tls
-openssl req -x509 -newkey rsa:2048 \
-  -keyout /root/relay-tls/key.pem \
-  -out /root/relay-tls/cert.pem \
-  -days 365 -nodes \
-  -subj "/CN=<RELAY_PUBLIC_IP>" \
-  -addext "subjectAltName=IP:<RELAY_PUBLIC_IP>"
-
-cat > /root/config.toml << EOF
-http_bind_addr = "0.0.0.0:3340"
-
-[tls]
-cert_mode = "Manual"
-manual_cert_path = "/root/relay-tls/cert.pem"
-manual_key_path = "/root/relay-tls/key.pem"
-
-[quic]
-quic_bind_addr = "0.0.0.0:7842"
-enable_quic_addr_discovery = true
-
-[metrics]
-bind_addr = "0.0.0.0:9091"
-EOF
-
-# Run the relay
-/root/.cargo/bin/iroh-relay -c /root/config.toml
+export HERMES_IROH_RELAY=https://relay.example.com
 ```
 
-Open ports: TCP 3340 (HTTP), UDP 7842 (QUIC), TCP 9091 (metrics, optional).
+The relay must expose TCP 443 (HTTPS) and UDP 7842. Keep metrics bound to a
+private interface or firewall it. Verify both the HTTPS endpoint and UDP/QUIC
+reachability from every client before pairing.
 
-> [!NOTE]
-> Self-signed certs require the client to trust the cert. The plugin
-> passes `--insecure-tls` automatically when `HERMES_IROH_RELAY` starts with
-> `http://`. For HTTPS with a self-signed cert, add the cert to the system
-> trust store.
+### File-transfer provider
+
+`sendme send` is an interactive long-lived provider. The plugin requires the
+Unix `script` utility so it can keep SendMe's pseudo-terminal alive after the
+Hermes tool returns. On relay-disabled/LAN-only setups, the plugin requests an
+addresses-only ticket automatically. The receiver must run before the sender's
+tracked provider is stopped.
 
 ### Hermes systemd drop-in for relay env
 
@@ -192,7 +174,7 @@ Open ports: TCP 3340 (HTTP), UDP 7842 (QUIC), TCP 9091 (metrics, optional).
 mkdir -p ~/.config/systemd/user/hermes-gateway.service.d
 cat > ~/.config/systemd/user/hermes-gateway.service.d/relay.conf << EOF
 [Service]
-Environment="HERMES_IROH_RELAY=http://<RELAY_IP>:3340"
+Environment="HERMES_IROH_RELAY=default"
 EOF
 systemctl --user daemon-reload
 systemctl --user restart hermes-gateway
