@@ -301,10 +301,10 @@ def iroh_send_file(args: dict, **_: Any) -> str:
             destination = str(args.get("dest") or "/home/rahlquist/").strip()
             delivery = json.loads(iroh_peer_call({
                 "peer": peer_id,
-                "message": (
-                    "Receive the file transfer below with iroh_fetch_file. "
-                    f"Destination: {destination}\\nTicket: {ticket}"
-                ),
+                "message": "HERMES_IROH_AUTO_FETCH\\n" + json.dumps({
+                    "ticket": ticket,
+                    "dest": destination,
+                }),
             }))
         except Exception as exc:
             delivery = {"success": False, "error": str(exc)}

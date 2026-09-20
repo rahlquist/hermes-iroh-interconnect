@@ -32,8 +32,12 @@ from typing import Any, Dict, Optional
 
 try:
     from .security import PeerStore, redact_outbound, wrap_inbound
+    from .transfer_tools import iroh_fetch_file
 except ImportError:  # standalone test/import mode
     from security import PeerStore, redact_outbound, wrap_inbound
+    from transfer_tools import iroh_fetch_file
+
+_AUTO_FETCH_PREFIX = "HERMES_IROH_AUTO_FETCH\n"
 
 try:  # The adapter only imports Hermes internals when running inside Hermes.
     from gateway.platforms.base import (
@@ -165,6 +169,14 @@ if _HERMES_AVAILABLE:
                 path.unlink(missing_ok=True)
                 return
 
+            if text.startswith(_AUTO_FETCH_PREFIX):
+                # A paired peer may request a file fetch without requiring a
+                # human to copy a bearer ticket between two agent chats. The
+                # request is still bounded by iroh_fetch_file's destination
+                # and ticket validation rules.
+                asyncio.create_task(self._auto_fetch_file(path, task_id, text))
+                return
+
             framed = self._frame_inbound(peer_id, text)
             event = MessageEvent(
                 text=framed,
@@ -182,6 +194,19 @@ if _HERMES_AVAILABLE:
             # The gateway resolves the reply through send() with this
             # context id; the poll loop does not block on it here.
             asyncio.create_task(self.handle_message(event))
+
+        async def _auto_fetch_file(self, path: Path, task_id: str, text: str) -> None:
+            try:
+                payload = json.loads(text[len(_AUTO_FETCH_PREFIX):])
+                result = await asyncio.to_thread(iroh_fetch_file, payload)
+                parsed = json.loads(result)
+                status = "completed" if parsed.get("success") else "failed"
+                reply_text = result[:256_000]
+            except Exception as exc:
+                status = "failed"
+                reply_text = str(exc)
+            self._write_reply(task_id, status, reply_text)
+            path.unlink(missing_ok=True)
 
         def _write_reply(self, task_id: str, status: str, text: str) -> None:
             if not task_id:
