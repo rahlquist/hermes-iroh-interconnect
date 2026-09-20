@@ -140,6 +140,101 @@ affecting task exchange.
 The sidecar also accepts `--relay <default|off|URL>` and operator-run peers
 can use `--keep-alive` when stdin is not owned by the plugin.
 
+#### Self-hosted relay with self-signed TLS
+
+The n0 public relays (`relay.iroh.network`) are **not reachable from all
+networks**. You can self-host a relay on any machine with a public IP:
+
+```bash
+# Install iroh-relay
+cargo install iroh-relay --features server
+
+# Create a config with self-signed TLS
+mkdir -p /root/relay-tls
+openssl req -x509 -newkey rsa:2048 \
+  -keyout /root/relay-tls/key.pem \
+  -out /root/relay-tls/cert.pem \
+  -days 365 -nodes \
+  -subj "/CN=<RELAY_PUBLIC_IP>" \
+  -addext "subjectAltName=IP:<RELAY_PUBLIC_IP>"
+
+cat > /root/config.toml << EOF
+http_bind_addr = "0.0.0.0:3340"
+
+[tls]
+cert_mode = "Manual"
+manual_cert_path = "/root/relay-tls/cert.pem"
+manual_key_path = "/root/relay-tls/key.pem"
+
+[quic]
+quic_bind_addr = "0.0.0.0:7842"
+enable_quic_addr_discovery = true
+
+[metrics]
+bind_addr = "0.0.0.0:9091"
+EOF
+
+# Run the relay
+/root/.cargo/bin/iroh-relay -c /root/config.toml
+```
+
+Open ports: TCP 3340 (HTTP), UDP 7842 (QUIC), TCP 9091 (metrics, optional).
+
+> [!NOTE]
+> Self-signed certs require the client to trust the cert. The plugin
+> passes `--insecure-tls` automatically when `HERMES_IROH_RELAY` starts with
+> `http://`. For HTTPS with a self-signed cert, add the cert to the system
+> trust store.
+
+### Hermes systemd drop-in for relay env
+
+```bash
+mkdir -p ~/.config/systemd/user/hermes-gateway.service.d
+cat > ~/.config/systemd/user/hermes-gateway.service.d/relay.conf << EOF
+[Service]
+Environment="HERMES_IROH_RELAY=http://<RELAY_IP>:3340"
+EOF
+systemctl --user daemon-reload
+systemctl --user restart hermes-gateway
+```
+
+### Known issues and troubleshooting
+
+#### "No addressing information available" on `iroh_peer_call`
+
+The dial address must include a relay URL. The sidecar reads
+`HERMES_IROH_RELAY` from its environment. Ensure:
+
+1. The env var is set in the **gateway's** environment (via systemd drop-in).
+2. The sidecar process inherits the env var — `sidecar_client.py` passes
+   `os.environ.copy()` to the subprocess. Verify:
+   `cat /proc/<sidecar_pid>/environ | tr '\0' '\n' | grep HERMES_IROH`.
+
+#### Timeout on first call
+
+The first call may time out while the sidecar binds to the relay and
+performs address discovery. Subsequent calls succeed once the endpoint is
+online.
+
+#### DNS resolution failures for `relay.iroh.network`
+
+Some networks cannot resolve or reach the n0 public relays. Self-host a
+relay as documented above.
+
+#### Plugin tools silently not registering
+
+The plugin uses relative imports. It must be loaded as a package — do **not**
+copy files into `~/.hermes/plugins/` individually. Use a symlink:
+
+```bash
+ln -s "$(pwd)" ~/.hermes/plugins/hermes-iroh-interconnect
+```
+
+#### Sidecar dies on stdin EOF
+
+When running the sidecar outside the plugin (for testing), pass `--keep-alive`
+so it does not exit when stdin closes.
+
 ### Operator pairing flow
 
 1. Run `iroh_peer_make_ticket` on the receiving agent.
