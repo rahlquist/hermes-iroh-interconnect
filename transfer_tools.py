@@ -65,6 +65,16 @@ _TICKET_RE = re.compile(
 # accept them bare or with the legacy "sendme receive " wrapper printed by
 # older versions.
 _HASH_RE = re.compile(r"hash ([0-9a-f]{16,})")
+_EXPORT_RE = re.compile(r"exporting to (.+)", re.IGNORECASE)
+
+def _exported_path(dest: Path, output: str) -> Optional[Path]:
+    matches = _EXPORT_RE.findall(output or "")
+    if not matches:
+        return None
+    name = matches[-1].strip().rstrip("\r")
+    candidate = dest / name
+    return candidate if candidate.exists() else None
+
 
 
 def _normalize_ticket(raw: str) -> Optional[str]:
@@ -373,15 +383,19 @@ def iroh_fetch_file(args: dict, **_: Any) -> str:
             "Leftover .sendme-* state in the destination is resumable."
         )
 
-    # Verify: find the newest non-hidden entry in dest (sendme moves the
-    # result in atomically after download).
-    entries = [p for p in dest.iterdir() if not p.name.startswith(".sendme")]
-    if not entries:
-        return _err(
-            "receive exited 0 but no resulting path was found in the "
-            "destination; inspect .sendme-* state there"
-        )
-    result = max(entries, key=lambda p: p.stat().st_mtime)
+    # Verify the exact exported path first. Falling back to newest-entry
+    # selection would misreport an older directory when the destination
+    # already contains unrelated Hermes state (for example ~/.hermes).
+    output = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    result = _exported_path(dest, output)
+    if result is None:
+        entries = [p for p in dest.iterdir() if not p.name.startswith(".sendme")]
+        if not entries:
+            return _err(
+                "receive exited 0 but no resulting path was found in the "
+                "destination; inspect .sendme-* state there"
+            )
+        result = max(entries, key=lambda p: p.stat().st_mtime)
 
     return _ok(
         {
