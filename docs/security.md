@@ -1,6 +1,6 @@
 # Security model
 
-Scope: v0.3-alpha — bidirectional task exchange (outbound dialing + inbound
+Scope: v0.3.0 — bidirectional task exchange (outbound dialing + inbound
 adapter + admission guard + operator-configurable relay). This document
 states what is enforced, what is deferred, and what the operator must not
 assume.

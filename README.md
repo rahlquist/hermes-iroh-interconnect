@@ -3,11 +3,8 @@
 Connect your Hermes agents directly over the internet or across private networks. This plugin gives one Hermes agent a secure, authenticated way to send another agent a task, receive the result, and optionally exchange files through SendMe — without relying on a central message broker or cloud service. You gain persistent agent identities, explicit operator-approved pairing, encrypted QUIC transport with NAT traversal and relay fallback, inbound peer authorization, replay/rate/concurrency protection, and a native Hermes platform adapter. In practical terms: your agents can collaborate as peers, delegate work across machines, and pass artifact-transfer tickets while retaining control over who is trusted and what leaves each host.
 
 > [!WARNING]
-> **Alpha software.** This plugin is under active development. The wire
-> protocol (`hermes-interconnect` v1) may change without migration, and it
-> has not been hardened against adversarial peers outside the test suite.
-> Do not connect it to untrusted agents. Pin the exact commit you install
-> and re-read `docs/security.md` before enabling inbound use.
+> Do not connect the plugin to untrusted agents. Review `docs/security.md`
+> before enabling inbound use and pair only machines you control.
 
 Agent interconnect for [Hermes Agent](https://github.com/NousResearch/hermes-agent)
 over [Iroh](https://github.com/n0-computer/iroh): dial-by-key QUIC with NAT
@@ -38,7 +35,7 @@ Hermes agent process
           └─ ALPN /hermes/interconnect/1
 ```
 
-Status: **v0.3-alpha — bidirectional transport plus optional artifacts**.
+Status: **v0.3.0 — bidirectional transport plus optional artifacts**.
 Real QUIC peer dialing, persistent endpoint identity, serve-mode control
 plane, inbound authorization, admission hardening, relay configuration, and
 optional SendMe-backed file transfer are implemented and covered end-to-end:
@@ -92,7 +89,7 @@ non-idempotent task is not silently run twice.
 
 The diagram shows the full flow: pair once with a ticket, remember the stable EndpointId, find a network path, prove identity plus authorize the peer, and exchange work. A bottom note explains network-drop behavior.
 
-## What's verified (v0.3-alpha)
+## What's verified (v0.3.0)
 
 - Two live sidecar processes dial each other over real QUIC and exchange
   tasks (Rust `serve_process` tests; Python `SidecarSession` tests).
