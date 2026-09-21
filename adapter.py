@@ -33,9 +33,14 @@ from typing import Any, Dict, Optional
 try:
     from .security import PeerStore, redact_outbound, wrap_inbound
     from .transfer_tools import iroh_fetch_file
+    from .settings import auto_fetch_enabled
 except ImportError:  # standalone test/import mode
     from security import PeerStore, redact_outbound, wrap_inbound
     from transfer_tools import iroh_fetch_file
+
+    def auto_fetch_enabled() -> bool:
+        return True
+
 
 _AUTO_FETCH_PREFIX = "HERMES_IROH_AUTO_FETCH\n"
 
@@ -169,13 +174,18 @@ if _HERMES_AVAILABLE:
                 path.unlink(missing_ok=True)
                 return
 
-            if text.startswith(_AUTO_FETCH_PREFIX):
-                # A paired peer may request a file fetch without requiring a
-                # human to copy a bearer ticket between two agent chats. The
-                # request is still bounded by iroh_fetch_file's destination
-                # and ticket validation rules.
+            if text.startswith(_AUTO_FETCH_PREFIX) and auto_fetch_enabled():
+                # Auto-fetch is enabled — fetch the file automatically.
                 asyncio.create_task(self._auto_fetch_file(path, task_id, text))
                 return
+
+            if text.startswith(_AUTO_FETCH_PREFIX) and not auto_fetch_enabled():
+                # Auto-fetch disabled — surface the ticket to the agent so
+                # the user can decide whether to fetch manually.
+                logger.info(
+                    "iroh adapter: auto-fetch disabled, surfacing ticket to agent"
+                )
+                # Fall through to normal message handling below.
 
             framed = self._frame_inbound(peer_id, text)
             event = MessageEvent(

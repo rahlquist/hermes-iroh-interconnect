@@ -527,3 +527,58 @@ def register_tools(ctx: Any) -> None:
         },
         handler=iroh_peer_call,
     )
+    ctx.register_tool(
+        name="iroh_peer_settings",
+        toolset=_TOOLSET,
+        schema={
+            "name": "iroh_peer_settings",
+            "description": (
+                "View or update Iroh interconnect settings. "
+                "Use key='auto_fetch' to control automatic file fetching. "
+                "Auto-fetch is enabled by default — incoming file transfers "
+                "are fetched automatically without prompting."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Setting key (e.g. 'auto_fetch')",
+                    },
+                    "value": {
+                        "type": "boolean",
+                        "description": "New value for the setting (omit to read current value)",
+                    },
+                },
+                "required": [],
+            },
+        },
+        handler=iroh_peer_settings,
+    )
+
+
+def iroh_peer_settings(args: dict, **_: Any) -> str:
+    """View or update Iroh interconnect settings (read/write).
+
+    Supported keys:
+    - ``auto_fetch`` (bool, default true): when enabled, incoming file
+      transfers are fetched automatically without prompting. When disabled,
+      the ticket is surfaced to the agent so the user can decide.
+    """
+    try:
+        from .settings import Settings, _state_dir
+    except ImportError:
+        from settings import Settings, _state_dir
+
+    key = str(args.get("key") or "").strip()
+    store = Settings(_state_dir())
+
+    if not key:
+        return _ok(store.all())
+
+    value = args.get("value")
+    if value is None:
+        return _ok({key: store.get(key)})
+
+    store.set(key, bool(value))
+    return _ok({key: store.get(key)})
