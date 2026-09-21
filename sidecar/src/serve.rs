@@ -136,10 +136,7 @@ pub async fn bind_endpoint(
     {
         builder = builder.ca_tls_config(iroh::tls::CaTlsConfig::insecure_skip_verify());
     }
-    let endpoint = builder
-        .bind()
-        .await
-        .context("binding iroh endpoint")?;
+    let endpoint = builder.bind().await.context("binding iroh endpoint")?;
     let _ = tokio::time::timeout(ONLINE_TIMEOUT, endpoint.online()).await;
     Ok((endpoint.clone(), endpoint.id().to_z32()))
 }
