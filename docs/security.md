@@ -95,3 +95,7 @@ assume.
   trusted certificate.
 - The sidecar's serve process dies on stdin EOF (plugin-owned lifecycle).
   Operator-run instances should pass `--keep-alive`.
+- The Rust dependency graph contains the transitive, unmaintained `paste`
+  crate through Iroh's network-discovery stack. It is not directly used by
+  this plugin; revisit it when the upstream dependency graph removes it and
+  keep the lockfile vulnerability audit in CI.

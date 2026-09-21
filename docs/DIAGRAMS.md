@@ -27,6 +27,19 @@ The relay is a traffic/path service. It is not the owner of either agent's ident
 | Inbound handoff lifecycle | What does the receiver do with an incoming task or file ticket? | [HTML](diagrams/05-inbound-handoff.html) · [source](diagrams/05-inbound-handoff.lifecycle.json) |
 | Many-client topology | How does this work with three or more clients? | [HTML](diagrams/06-many-clients.html) · [source](diagrams/06-many-clients.architecture.json) |
 
+## Text-only operator workflow
+
+The diagrams are optional. A terminal-only or screen-reader-friendly workflow is:
+
+1. Build the Rust sidecar and install the repository root as a Hermes plugin.
+2. Enable the plugin and set `HERMES_IROH_RELAY` in the gateway environment when relay use is required.
+3. On the receiving host, run `iroh_peer_make_ticket`; privately transfer the ticket or QR.
+4. On the pairing host, call `iroh_peer_pair` once without confirmation, verify the EndpointId, then repeat with `confirm=true`.
+5. Use `iroh_peer_status` and `iroh_peer_list` to verify local state.
+6. Use `iroh_peer_call` for bounded task exchange; remote text is untrusted input.
+7. For files, keep `send_hermes` running, use an explicit destination, and verify the resulting path and hash.
+8. If `auto_fetch` is enabled, configure `HERMES_IROH_AUTO_FETCH_DIR` first and treat it as a local-write capability.
+
 ## 1. System architecture: what runs where
 
 ![Hermes Iroh system architecture](diagrams/how-hermes-agents-connect.svg)

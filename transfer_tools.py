@@ -134,7 +134,7 @@ def sendme_install_hint() -> Dict[str, Any]:
             "what": "send_hermes (p2p file transfer over iroh/iroh-blobs)",
             "install": (
                 "git clone https://github.com/rahlquist/sendme.git send_hermes && "
-                "cd send_hermes && git checkout send_hermes && "
+                "cd send_hermes && git checkout c700cbcaedb8f626716b8769dcbc5571ec64d088 && "
                 "cargo install --path ."
             ),
             "verify": "send_hermes --version",

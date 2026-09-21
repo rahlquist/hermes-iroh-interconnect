@@ -50,7 +50,7 @@ and do not affect peer/task exchange. Install and verify it with:
 
 ```bash
 git clone https://github.com/rahlquist/sendme.git send_hermes
-cd send_hermes && git checkout send_hermes
+cd send_hermes && git checkout c700cbcaedb8f626716b8769dcbc5571ec64d088
 cargo install --path .
 send_hermes --version
 ```
@@ -292,6 +292,24 @@ The gateway must be restarted after changing the plugin symlink or sidecar binar
 | `HERMES_IROH_DEFAULT_AUTO_FETCH` | `false` | Initial auto-fetch setting; explicit true/false values only |
 | `HERMES_IROH_AUTO_FETCH_DIR` | unset | Required receiver-owned root when auto-fetch is enabled |
 | `HERMES_IROH_INSECURE_TLS` | unset | Test-only certificate-verification bypass; never use in production |
+
+### Upgrade, backup, and rollback
+
+Before upgrading, stop the Hermes gateway and back up the profile-scoped
+`iroh-interconnect` directory. Preserve `endpoint.key`, `peers.json`,
+`pairing.secret`, `nonces.json`, and `settings.json`; replacing `endpoint.key`
+creates a new EndpointId and requires re-pairing every peer.
+
+After updating the plugin:
+
+1. Rebuild the sidecar with the documented Rust toolchain.
+2. Restart the Hermes gateway.
+3. Run `iroh_peer_status` and `iroh_peer_list`.
+4. Make a bounded call to one known peer before resuming normal traffic.
+5. Keep the previous plugin commit and state backup available for rollback.
+
+The optional `send_hermes` provider is pinned to a tested commit in the install
+instructions. Update it only through a deliberate compatibility review.
 
 ## Tools
 
