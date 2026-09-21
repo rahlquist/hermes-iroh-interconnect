@@ -16,8 +16,11 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
+import select
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -154,23 +157,38 @@ class SidecarSession:
         """
         if self.proc is None or self.proc.poll() is not None:
             raise SidecarUnavailable("sidecar process is not running")
-        req = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
+        request_id = secrets.token_hex(16)
+        req = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}}
         with self._lock:
             try:
                 assert self.proc is not None and self.proc.stdin and self.proc.stdout
                 self.proc.stdin.write(json.dumps(req) + "\n")
                 self.proc.stdin.flush()
+                deadline = time.monotonic() + max(1, int(timeout))
+                remaining = max(0.0, deadline - time.monotonic())
+                ready, _, _ = select.select([self.proc.stdout], [], [], remaining)
+                if not ready:
+                    self.close()
+                    raise SidecarUnavailable(f"sidecar timed out after {timeout}s")
                 line = self.proc.stdout.readline()
+            except SidecarUnavailable:
+                raise
             except (BrokenPipeError, OSError, ValueError) as exc:
+                self.close()
                 raise SidecarUnavailable(f"sidecar pipe failure: {exc}") from exc
         if not line:
             raise SidecarUnavailable("sidecar closed the connection")
         try:
             reply = json.loads(line)
         except ValueError as exc:
+            self.close()
             raise SidecarUnavailable(f"sidecar reply is not JSON: {exc}") from exc
         if not isinstance(reply, dict):
+            self.close()
             raise SidecarUnavailable("sidecar reply is not an object")
+        if reply.get("id") != request_id:
+            self.close()
+            raise SidecarUnavailable("sidecar reply id does not match request")
         if "error" in reply:
             message = reply["error"].get("message", "unknown error")
             raise SidecarUnavailable(f"sidecar error: {message}")
@@ -189,14 +207,18 @@ class SidecarSession:
         endpoint_id: str,
         addrs: List[str],
         text: str,
+        context_id: Optional[str] = None,
         timeout: int = 120,
     ) -> Dict[str, Any]:
         """Dial a peer by endpoint id + addresses and run one task."""
-        return self.request(
-            "dial",
-            {"endpointId": endpoint_id, "addrs": addrs, "task": {"text": text}},
-            timeout=timeout,
-        )
+        params: Dict[str, Any] = {
+            "endpointId": endpoint_id,
+            "addrs": addrs,
+            "task": {"text": text},
+        }
+        if context_id:
+            params["requestId"] = context_id
+        return self.request("dial", params, timeout=timeout)
 
 
 # ---------------------------------------------------------------------------

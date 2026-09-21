@@ -36,6 +36,7 @@ _TOOL_NAMES = (
     "iroh_peer_pair",
     "iroh_peer_make_ticket",
     "iroh_peer_call",
+    "iroh_peer_settings",
     "iroh_send_file",
     "iroh_fetch_file",
     "iroh_transfer_status",

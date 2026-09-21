@@ -5,6 +5,7 @@
 //! identity so paired peers can keep dialing. A corrupt file fails closed
 //! (never silently regenerated — that would strand paired peers).
 
+use std::io::Write;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
@@ -45,11 +46,24 @@ pub fn load_or_create(path: impl AsRef<Path>) -> Result<SecretKey> {
     }
 
     let key = SecretKey::generate();
-    std::fs::write(path, key.to_bytes()).context("writing endpoint key")?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
     }
-    Ok(key)
+    match options.open(path) {
+        Ok(mut file) => {
+            file.write_all(&key.to_bytes())
+                .context("writing endpoint key")?;
+            file.sync_all().context("syncing endpoint key")?;
+            Ok(key)
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+            // Another process won first creation; load and validate its key.
+            load_or_create(path)
+        }
+        Err(err) => Err(err).context("creating endpoint key"),
+    }
 }

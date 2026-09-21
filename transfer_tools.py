@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import select
 import shlex
 import shutil
@@ -72,9 +73,29 @@ def _exported_path(dest: Path, output: str) -> Optional[Path]:
     if not matches:
         return None
     name = matches[-1].strip().rstrip("\r")
-    candidate = dest / name
+    candidate = (dest / name).resolve()
+    try:
+        candidate.relative_to(dest.resolve())
+    except ValueError:
+        return None
     return candidate if candidate.exists() else None
 
+
+def _new_entries(dest: Path, before: set[Path]) -> list[Path]:
+    """Return only entries created during a receive operation."""
+    return [entry for entry in dest.iterdir() if entry not in before and not entry.name.startswith(".sendme")]
+
+
+def _contains_symlink(path: Path) -> bool:
+    """Reject symlink path components before handing a directory to a provider."""
+    current = path.expanduser()
+    for component in [current, *current.parents]:
+        try:
+            if component.is_symlink():
+                return True
+        except OSError:
+            return True
+    return False
 
 
 def _normalize_ticket(raw: str) -> Optional[str]:
@@ -136,6 +157,17 @@ def _state_dir() -> Path:
         return Path(get_hermes_home()) / "iroh-interconnect"
     except Exception:
         return Path.home() / ".hermes" / "iroh-interconnect"
+
+
+def _secure_state_dir() -> Path:
+    """Create the profile state directory with private permissions."""
+    state_dir = _state_dir()
+    state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        state_dir.chmod(0o700)
+    except OSError:
+        pass
+    return state_dir
 
 
 def _ok(payload: Dict[str, Any]) -> str:
@@ -222,9 +254,22 @@ def iroh_send_file(args: dict, **_: Any) -> str:
     if not path.is_file() and not path.is_dir():
         return _err(f"path is neither a regular file nor a directory: {path}")
 
+    peer_id = str(args.get("peer") or args.get("peer_id") or "").strip()
+    destination = str(args.get("dest") or "").strip()
+    if peer_id and not destination:
+        return _err("'dest' is required when peer delivery is requested")
+
     binary = sendme_available()
     if binary is None:
         return json.dumps(sendme_install_hint())
+
+    if path.is_dir() and not bool(args.get("allow_sensitive")):
+        for child in path.rglob("*"):
+            if _sensitive_path(child):
+                return _err(
+                    f"refusing to share {path}: sensitive material found at {child}. "
+                    "Re-invoke with allow_sensitive=true only after reviewing contents."
+                )
 
     cmd = [binary, "send", "--no-progress", str(path)] + _relay_flag()
     # SendMe's copy-command prompt uses crossterm and exits when stdin is not
@@ -236,10 +281,11 @@ def iroh_send_file(args: dict, **_: Any) -> str:
     if os.environ.get("HERMES_IROH_RELAY", "").strip().lower() in {"off", "disabled", "none"}:
         cmd += ["--ticket-type", "addresses"]
 
-    state_dir = _state_dir()
-    state_dir.mkdir(parents=True, exist_ok=True)
-    transfer_nonce = f"{int(time.time())}-{os.getpid()}"
+    state_dir = _secure_state_dir()
+    transfer_nonce = secrets.token_hex(16)
     log_path = state_dir / f"sendme-{transfer_nonce}.log"
+    log_fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.close(log_fd)
     script_cmd = " ".join(shlex.quote(part) for part in cmd)
     proc = subprocess.Popen(
         ["script", "-qefc", script_cmd, str(log_path)],
@@ -299,7 +345,6 @@ def iroh_send_file(args: dict, **_: Any) -> str:
     _save_transfers(transfers)
 
     delivery = None
-    peer_id = str(args.get("peer") or args.get("peer_id") or "").strip()
     if peer_id:
         # Optional one-call delivery: the paired peer receives a normal Iroh
         # task containing the bearer ticket and can invoke its local fetch
@@ -309,7 +354,6 @@ def iroh_send_file(args: dict, **_: Any) -> str:
                 from .peer_tools import iroh_peer_call
             except ImportError:  # standalone test/import mode
                 from peer_tools import iroh_peer_call
-            destination = str(args.get("dest") or "/home/rahlquist/").strip()
             delivery = json.loads(iroh_peer_call({
                 "peer": peer_id,
                 "message": "HERMES_IROH_AUTO_FETCH\n" + json.dumps({
@@ -354,11 +398,14 @@ def iroh_fetch_file(args: dict, **_: Any) -> str:
     dest = Path(dest_raw).expanduser()
     if not dest.is_dir():
         return _err(f"destination is not an existing directory: {dest}")
+    if _contains_symlink(dest):
+        return _err("destination contains a symlink path component")
 
     binary = sendme_available()
     if binary is None:
         return json.dumps(sendme_install_hint())
 
+    before_entries = set(dest.iterdir())
     cmd = [binary, "receive", ticket, "--no-progress"] + _relay_flag()
     proc = None
     try:
@@ -403,13 +450,13 @@ def iroh_fetch_file(args: dict, **_: Any) -> str:
     output = (stdout or "") + "\n" + (stderr or "")
     result = _exported_path(dest, output)
     if result is None:
-        entries = [p for p in dest.iterdir() if not p.name.startswith(".sendme")]
-        if not entries:
+        entries = _new_entries(dest, before_entries)
+        if len(entries) != 1:
             return _err(
-                "receive exited 0 but no resulting path was found in the "
-                "destination; inspect .sendme-* state there"
+                "receive exited 0 but the exact resulting path could not be "
+                "verified; inspect .sendme-* state there"
             )
-        result = max(entries, key=lambda p: p.stat().st_mtime)
+        result = entries[0]
 
     return _ok(
         {

@@ -110,7 +110,7 @@ message instead of preventing the Iroh task tools from loading.
 
 ```bash
 # Verify the optional dependency
-command -v sendme && sendme --version
+command -v send_hermes && send_hermes --version
 
 # Optional transfer operations
 # iroh_send_file: path -> ticket + transfer id
@@ -118,13 +118,13 @@ command -v sendme && sendme --version
 # iroh_transfer_status: list or stop a tracked sender by transfer id
 ```
 
-For a sender, keep the `sendme send` provider running until the receiver
+For a sender, keep the `send_hermes send` provider running until the receiver
 finishes. Tickets are bearer capabilities. Do not put them in public channels.
 
 ### Relay configuration
 
 `HERMES_IROH_RELAY` applies to both the Iroh sidecar and send_hermes transfers.
-The send_hermes transfer tools are available only when the `sendme` executable is
+The send_hermes transfer tools are available only when the `send_hermes` executable is
 installed; otherwise they return the install/verify instructions without
 affecting task exchange.
 
@@ -151,8 +151,11 @@ then set the same HTTPS URL on every endpoint:
 export HERMES_IROH_RELAY=https://relay.example.com
 ```
 
-The relay must expose TCP 443 (HTTPS) and UDP 7842. Keep metrics bound to a
-private interface or firewall it. Verify both the HTTPS endpoint and UDP/QUIC
+The relay URL must point to the relay's HTTPS/WebSocket endpoint. Depending on
+its deployment configuration this is commonly TCP 443 or TCP 3443; TCP 3340 is
+the relay HTTP/API port and is not the client WebSocket endpoint. The relay
+also needs UDP 7842 for QUIC. Keep metrics bound to a private interface or
+firewall it. Verify the configured HTTPS/WebSocket endpoint and UDP/QUIC
 reachability from every client before pairing.
 
 ### File-transfer provider
@@ -172,8 +175,9 @@ For a paired Hermes peer, pass `peer` and `dest` to `iroh_send_file`:
 
 This is the open-pipeline path: the sender starts the provider, sends the
 bearer ticket over the authenticated Iroh task channel, and the receiving
-adapter fetches it automatically into the requested existing directory. The
-provider remains tracked until the fetch request completes.
+The receiving adapter can fetch it automatically only when the receiver has explicitly enabled
+`auto_fetch`; it otherwise surfaces the ticket for operator review. The receiver must provide a
+safe, existing destination directory. The provider remains tracked until the fetch request completes.
 
 Without `peer`, `iroh_send_file` retains the ticket-only behavior for manual
 or non-Hermes send_hermes receivers.
@@ -250,17 +254,44 @@ CI job does not require Hermes source or send_hermes; those are optional runtime
 integrations and have dedicated local/integration tests.
 
 
+Prerequisites: Rust/Cargo **1.89 or newer**, Python 3.11+, and Hermes Agent.
+Verify the toolchain before building:
+
 ```bash
-# 1. Build the sidecar (requires cargo)
+rustc --version
+cargo --version
+python --version
+```
+
+```bash
+# 1. Build the sidecar from the repository root
 cd sidecar && cargo build --release
 
-# 2. Install the plugin into Hermes
+# 2. Install the plugin root (not sidecar/) into Hermes
+cd ..
 mkdir -p ~/.hermes/plugins
 ln -s "$(pwd)" ~/.hermes/plugins/hermes-iroh-interconnect
 
 # 3. Enable it
 hermes plugins enable hermes-iroh-interconnect
 ```
+
+The gateway must be restarted after changing the plugin symlink or sidecar binary.
+
+### Supported environment variables
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `HERMES_IROH_RELAY` | default | Relay policy or URL; set in the gateway environment |
+| `HERMES_IROH_STATE_DIR` | profile state dir | Override persistent plugin state |
+| `HERMES_IROH_SIDECAR` | bundled release binary | Override sidecar path |
+| `HERMES_IROH_TIMEOUT` | `120` seconds | Outbound task timeout |
+| `HERMES_IROH_HANDOFF_TIMEOUT` | `300` seconds | Sidecar-to-adapter handoff timeout |
+| `HERMES_IROH_SEND_TIMEOUT` | `90` seconds | Provider startup timeout |
+| `HERMES_IROH_FETCH_TIMEOUT` | `600` seconds | File receive timeout |
+| `HERMES_IROH_DEFAULT_AUTO_FETCH` | `false` | Initial auto-fetch setting; explicit true/false values only |
+| `HERMES_IROH_AUTO_FETCH_DIR` | unset | Required receiver-owned root when auto-fetch is enabled |
+| `HERMES_IROH_INSECURE_TLS` | unset | Test-only certificate-verification bypass; never use in production |
 
 ## Tools
 
@@ -270,6 +301,29 @@ hermes plugins enable hermes-iroh-interconnect
 | `iroh_peer_list` | Paired peers (id, endpoint, timestamps — no secrets) | Read-only |
 | `iroh_peer_pair` | Record a peer from a `hermes-iroh://pair?...` ticket | Durable peer record |
 | `iroh_peer_call` | One bounded task to one paired peer | Network request, audited |
+| `iroh_peer_settings` | View/update local settings such as `auto_fetch` | Local settings write |
+
+`auto_fetch` is **disabled by default**. Enabling it permits an authenticated paired peer to
+request a local file receive. Before enabling it, set the receiver-owned root directory:
+
+```bash
+export HERMES_IROH_AUTO_FETCH_DIR="$HOME/received-from-iroh"
+mkdir -p "$HERMES_IROH_AUTO_FETCH_DIR"
+```
+
+Destinations outside this root are rejected. Enable the setting explicitly through the
+`iroh_peer_settings` tool:
+
+```json
+{"key":"auto_fetch","value":true}
+```
+
+To inspect or disable it:
+
+```json
+{"key":"auto_fetch"}
+{"key":"auto_fetch","value":false}
+```
 
 ## Testing
 
@@ -296,8 +350,8 @@ See [docs/security.md](docs/security.md) for the trust model. Summary:
 - Inbound text is framed as untrusted external input with provenance; slash
   commands embedded in peer text are neutralized.
 - Outbound text is scrubbed of credential-shaped strings (defense in depth).
-- Every frame is size-bounded before allocation; malformed input fails
-  closed with a structured `task.error`.
+- Every frame is size-bounded before allocation; malformed envelopes produce
+  structured `task.error` replies and invalid streams are closed without dispatch.
 
 ## License
 

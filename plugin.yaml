@@ -9,8 +9,9 @@ description: >
   A supervised Rust sidecar owns the long-lived Iroh endpoint; this plugin
   exposes peer-pairing, status, and task-exchange tools to the agent. Inbound
   tasks arrive through the platform adapter `iroh`.
-  v0.1 scope: outbound peer calls to paired peers; pairing is by explicit
-  ticket (key material) recorded in profile-scoped state. See docs/security.md.
+  v0.3 scope: bidirectional peer calls, inbound adapter handoff, and optional
+  send_hermes-backed file transfers. Pairing is by explicit ticket recorded in
+  profile-scoped state. See docs/security.md.
 author: Richard Ahlquist
 tags: [networking, p2p, quic, agents]
 provides_tools:
@@ -22,5 +23,6 @@ provides_tools:
   - iroh_fetch_file
   - iroh_transfer_status
   - iroh_peer_call
+  - iroh_peer_settings
 requires_env: []
 python_dependencies: []

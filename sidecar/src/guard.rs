@@ -103,6 +103,11 @@ impl Guarded {
         }
 
         let mut peers = self.peers.lock().unwrap_or_else(|e| e.into_inner());
+        if !peers.contains_key(&peer.endpoint_id) && peers.len() >= 1024 {
+            if let Some(oldest_key) = peers.keys().next().cloned() {
+                peers.remove(&oldest_key);
+            }
+        }
         let now = Instant::now();
         let window = Duration::from_secs_f64(self.window);
 

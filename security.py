@@ -19,6 +19,12 @@ import os
 import re
 import tempfile
 import time
+from contextlib import contextmanager
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows has no fcntl
+    fcntl = None
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, urlsplit
@@ -109,6 +115,26 @@ def validate_ticket(raw: str, *, now: Optional[float] = None) -> Dict[str, Any]:
     return {"peer_id": peer_id, "secret": secret, "ts": ts, "nonce": nonce}
 
 
+@contextmanager
+def _state_lock(path: Path):
+    """Serialize load-modify-replace updates across local processes."""
+    lock_path = path.with_name(path.name + ".lock")
+    lock_path.touch(mode=0o600, exist_ok=True)
+    try:
+        os.chmod(lock_path, 0o600)
+    except OSError:
+        pass
+    if fcntl is None:
+        yield
+        return
+    with lock_path.open("r+") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 class NonceStore:
     """Single-use nonce registry backed by a 0600 JSON file.
 
@@ -145,16 +171,17 @@ class NonceStore:
         if not nonce:
             return False
         current = time.time() if now is None else now
-        used = self._load()
-        # Prune nonces older than 2x the ticket lifetime — they can no
-        # longer be presented on a valid ticket.
-        cutoff = current - 2 * TICKET_MAX_AGE_SECONDS
-        used = {k: v for k, v in used.items() if v >= cutoff}
-        if nonce in used:
-            return False
-        used[nonce] = current
-        _atomic_json_write(self.path, used, mode=0o600)
-        return True
+        with _state_lock(self.path):
+            used = self._load()
+            # Prune nonces older than 2x the ticket lifetime — they can no
+            # longer be presented on a valid ticket.
+            cutoff = current - 2 * TICKET_MAX_AGE_SECONDS
+            used = {k: v for k, v in used.items() if v >= cutoff}
+            if nonce in used:
+                return False
+            used[nonce] = current
+            _atomic_json_write(self.path, used, mode=0o600)
+            return True
 
 
 def _atomic_json_write(path: Path, data: Any, mode: int = 0o600) -> None:
@@ -200,12 +227,26 @@ class PeerStore:
             return {}
 
     def add_peer(self, peer_id: str, record: Dict[str, Any]) -> None:
-        peers = self._load()
-        peers[peer_id] = record
-        _atomic_json_write(self.path, peers, mode=0o600)
+        with _state_lock(self.path):
+            peers = self._load()
+            peers[peer_id] = record
+            _atomic_json_write(self.path, peers, mode=0o600)
 
     def get_peer(self, peer_id: str) -> Optional[Dict[str, Any]]:
         return self._load().get(peer_id)
+
+    def touch_peer(self, peer_id: str, timestamp: str) -> bool:
+        """Update last_called only if the peer still exists."""
+        with _state_lock(self.path):
+            peers = self._load()
+            record = peers.get(peer_id)
+            if record is None:
+                return False
+            record = dict(record)
+            record["last_called"] = timestamp
+            peers[peer_id] = record
+            _atomic_json_write(self.path, peers, mode=0o600)
+            return True
 
     def find_by_endpoint_id(self, endpoint_id: str) -> Optional[str]:
         """Resolves an authenticated Iroh endpoint id (z32) to a paired
@@ -225,9 +266,10 @@ class PeerStore:
         return self._load()
 
     def revoke(self, peer_id: str) -> None:
-        peers = self._load()
-        peers.pop(peer_id, None)
-        _atomic_json_write(self.path, peers, mode=0o600)
+        with _state_lock(self.path):
+            peers = self._load()
+            peers.pop(peer_id, None)
+            _atomic_json_write(self.path, peers, mode=0o600)
 
 
 _INBOUND_FRAME = (
@@ -263,6 +305,10 @@ _KEY_VALUE_RE = re.compile(
     r"(?i)\b((?:api[-_]?key|secret|token|password|passwd|pwd|private[-_]?key)"
     r"\s*[:=]\s*)([^\s;,`'\"]{8,})"
 )
+_JSON_KEY_VALUE_RE = re.compile(
+    r"(?i)([\"']?(?:api[-_]?key|secret|token|password|passwd|pwd|private[-_]?key)"
+    r"[\"']?\s*[:=]\s*[\"'])([^\"']{8,})([\"'])"
+)
 _PRIVATE_KEY_RE = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----(.*?)-----END [A-Z ]*PRIVATE KEY-----",
     re.DOTALL,
@@ -276,7 +322,11 @@ def redact_outbound(text: str) -> str:
     def _mask(match: re.Match) -> str:
         return f"{match.group(1)}[REDACTED]"
 
+    def _mask_quoted(match: re.Match) -> str:
+        return f"{match.group(1)}[REDACTED]{match.group(3)}"
+
     out = _BEARER_RE.sub(_mask, out)
-    out = _PRIVATE_KEY_RE.sub("-----BEGIN PRIVATE KEY----- [REDACTED] -----END PRIVATE KEY-----", out)
+    out = _PRIVATE_KEY_RE.sub("[REDACTED PRIVATE KEY]", out)
+    out = _JSON_KEY_VALUE_RE.sub(_mask_quoted, out)
     out = _KEY_VALUE_RE.sub(_mask, out)
     return out

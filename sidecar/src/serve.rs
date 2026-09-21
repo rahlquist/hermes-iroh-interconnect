@@ -137,7 +137,10 @@ pub async fn bind_endpoint(
         builder = builder.ca_tls_config(iroh::tls::CaTlsConfig::insecure_skip_verify());
     }
     let endpoint = builder.bind().await.context("binding iroh endpoint")?;
-    let _ = tokio::time::timeout(ONLINE_TIMEOUT, endpoint.online()).await;
+    match tokio::time::timeout(ONLINE_TIMEOUT, endpoint.online()).await {
+        Ok(()) => {}
+        Err(_) => anyhow::bail!("endpoint did not become online within {ONLINE_TIMEOUT:?}"),
+    }
     Ok((endpoint.clone(), endpoint.id().to_z32()))
 }
 
@@ -161,7 +164,7 @@ pub fn spawn_router(endpoint: &Endpoint, state_dir: &std::path::Path) -> Router 
         .spawn()
 }
 
-fn endpoint_addr(id_z32: &str, addrs: &[String]) -> Result<EndpointAddr> {
+fn endpoint_addr(id_z32: &str, addrs: &[String], policy: &RelayPolicy) -> Result<EndpointAddr> {
     let public = iroh::PublicKey::from_z32(id_z32).context("parsing endpoint id")?;
     let mut set = BTreeSet::new();
     for raw in addrs {
@@ -174,11 +177,10 @@ fn endpoint_addr(id_z32: &str, addrs: &[String]) -> Result<EndpointAddr> {
         id: public,
         addrs: set,
     };
-    let relay = std::env::var("HERMES_IROH_RELAY").unwrap_or_default();
-    let relay = match relay.trim().to_ascii_lowercase().as_str() {
-        "" | "default" | "n0" => Some(DEFAULT_RELAY_URL),
-        "disabled" | "off" | "none" => None,
-        _ => Some(relay.trim()),
+    let relay = match policy {
+        RelayPolicy::Default => Some(DEFAULT_RELAY_URL),
+        RelayPolicy::Disabled => None,
+        RelayPolicy::CustomUrl(url) => Some(url.as_str()),
     };
     if let Some(relay) = relay {
         let parsed = relay
@@ -189,7 +191,7 @@ fn endpoint_addr(id_z32: &str, addrs: &[String]) -> Result<EndpointAddr> {
     Ok(addr)
 }
 
-async fn handle_rpc(endpoint: &Endpoint, req: RpcRequest) -> Result<Value> {
+async fn handle_rpc(endpoint: &Endpoint, policy: &RelayPolicy, req: RpcRequest) -> Result<Value> {
     match req.method.as_str() {
         "status" => Ok(json!({
             "ready": true,
@@ -221,7 +223,7 @@ async fn handle_rpc(endpoint: &Endpoint, req: RpcRequest) -> Result<Value> {
                         .collect()
                 })
                 .unwrap_or_default();
-            let addr = endpoint_addr(&endpoint_id, &addrs)?;
+            let addr = endpoint_addr(&endpoint_id, &addrs, policy)?;
 
             let text = req
                 .params
@@ -241,9 +243,13 @@ async fn handle_rpc(endpoint: &Endpoint, req: RpcRequest) -> Result<Value> {
                 "protocol": "hermes-interconnect",
                 "version": 1,
                 "type": "task.request",
-                "requestId": format!("dial-{}", std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis()).unwrap_or(0)),
+                "requestId": req
+                    .params
+                    .get("requestId")
+                    .and_then(|v| v.as_str())
+                    .filter(|id| !id.trim().is_empty() && id.len() <= 256)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| format!("dial-{:032x}", rand::random::<u128>())),
                 "payload": {"text": text},
             });
             let payload = serde_json::to_vec(&request)?;
@@ -316,7 +322,7 @@ pub async fn run(
         };
 
         let rpc: RpcRequest = serde_json::from_str(trimmed).expect("re-parse validated");
-        match handle_rpc(&endpoint, rpc).await {
+        match handle_rpc(&endpoint, policy, rpc).await {
             Ok(result) => {
                 writeln!(out, "{}", rpc_ok(&id, result))?;
             }

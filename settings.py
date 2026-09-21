@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 SETTINGS_FILENAME = "settings.json"
 
 _DEFAULTS: Dict[str, Any] = {
-    "auto_fetch": bool(os.environ.get("HERMES_IROH_DEFAULT_AUTO_FETCH", "true")),
+    # Receiving files is a local write side effect; require explicit opt-in.
+    "auto_fetch": os.environ.get("HERMES_IROH_DEFAULT_AUTO_FETCH", "false").strip().lower()
+    in {"1", "true", "yes", "on"},
 }
 
 
@@ -99,5 +101,5 @@ class Settings:
 
 
 def auto_fetch_enabled() -> bool:
-    """Check if auto-fetch is enabled (default true)."""
-    return bool(Settings(_state_dir()).get("auto_fetch", True))
+    """Check if auto-fetch is enabled (default false)."""
+    return bool(Settings(_state_dir()).get("auto_fetch", False))

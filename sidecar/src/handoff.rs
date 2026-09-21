@@ -68,7 +68,22 @@ impl FileHandoffEngine {
     }
 
     fn queue_dir(&self) -> PathBuf {
-        self.state_dir.join("queue")
+        let queue = self.state_dir.join("queue");
+        let _ = std::fs::create_dir_all(&queue);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&queue, std::fs::Permissions::from_mode(0o700));
+        }
+        queue
+    }
+
+    fn unique_task_id(&self) -> String {
+        format!(
+            "task-{}-{:032x}",
+            std::process::id(),
+            rand::random::<u128>()
+        )
     }
 }
 
@@ -97,14 +112,7 @@ impl FileHandoffEngine {
         let queue = self.queue_dir();
         let _ = std::fs::create_dir_all(&queue);
 
-        let task_id = format!(
-            "task-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0)
-        );
+        let task_id = self.unique_task_id();
         let text = request
             .payload
             .get("text")
@@ -132,6 +140,7 @@ impl FileHandoffEngine {
         let deadline = std::time::Instant::now() + Duration::from_secs_f64(self.deadline_secs);
         loop {
             if std::time::Instant::now() >= deadline {
+                let _ = std::fs::write(queue.join(format!("cancel-{task_id}")), b"expired");
                 let _ = std::fs::remove_file(&task_path);
                 return (
                     "failed".into(),
@@ -140,6 +149,9 @@ impl FileHandoffEngine {
             }
             if let Ok(raw) = std::fs::read_to_string(&reply_path) {
                 if let Ok(reply) = serde_json::from_str::<serde_json::Value>(&raw) {
+                    if reply.get("taskId").and_then(|v| v.as_str()) != Some(task_id.as_str()) {
+                        continue;
+                    }
                     let _ = std::fs::remove_file(&reply_path);
                     let _ = std::fs::remove_file(&task_path);
                     let status = reply

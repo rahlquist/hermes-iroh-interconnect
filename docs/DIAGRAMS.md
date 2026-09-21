@@ -67,7 +67,7 @@ A task and a file are different things:
 
 The sender must keep `send_hermes` running until the receiver finishes. The ticket is a bearer capability: anyone who obtains it may be able to fetch the file, so never post it publicly.
 
-With a paired Hermes peer and the default `auto_fetch=true` setting:
+With a paired Hermes peer and `auto_fetch` explicitly enabled by the receiver:
 
 1. `iroh_send_file` starts and tracks `send_hermes`.
 2. The sender sends the ticket through the authenticated task channel.

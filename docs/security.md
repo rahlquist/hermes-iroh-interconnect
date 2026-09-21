@@ -16,9 +16,12 @@ assume.
    validated *offline* by `security.validate_ticket` — scheme, host,
    peer-id charset, secret length, **expiry** (15 minutes) and **nonce
    shape** are enforced before anything is stored. The nonce is single-use
-   (`NonceStore`, 0600); replays are refused. Pairing additionally requires
-   explicit operator confirmation (`confirm=true` on the tool call) — the
-   first, unconfirmed invocation surfaces the decision instead of pairing.
+   (`NonceStore`, 0600); replays are refused after confirmation. The ticket
+   secret is a bearer capability, not a digital signature; the security
+   boundary is explicit operator confirmation followed by TLS-authenticated
+   EndpointId authorization. Pairing additionally requires explicit operator
+   confirmation (`confirm=true` on the tool call) — the first, unconfirmed
+   invocation surfaces the decision instead of pairing.
 3. **Peer state.** Peers live in `<HERMES_HOME>/iroh-interconnect/peers.json`
    with mode `0600` (enforced on every write and repaired on open).
 
@@ -27,8 +30,9 @@ assume.
 - **Frame bounds.** 4-byte big-endian length prefix; lengths above 4 MiB are
   rejected *before allocation* on both sides of the wire.
 - **Envelope validation.** Protocol name, version, message type, and required
-  fields are checked; malformed input yields a structured `task.error`, never
-  a panic or a pass-through.
+  fields are checked; malformed envelopes yield a structured `task.error`.
+  Invalid framing, UTF-8, truncated reads, and read timeouts close the stream
+  without dispatching input.
 - **Unknown peers.** `iroh_peer_call` refuses any peer not in the store;
   inbound tasks are authorized by the sender's **TLS-authenticated Iroh
   endpoint id** (captured at the QUIC connection, not taken from envelope
@@ -80,7 +84,14 @@ assume.
   Filesystem access is a separate trust boundary; files are 0600 but not
   encrypted.
 - The confirmation gate is tool-arg based: the agent must re-invoke
-  `iroh_peer_pair` with `confirm=true`. A desktop UI surface for the
-  prompt is a future item.
+  `iroh_peer_pair` with `confirm=true`. The ticket nonce is consumed only
+  after confirmation. A desktop UI surface for the prompt is a future item.
+- Automatic file fetching is disabled by default because it performs a local
+  write selected by a peer-supplied destination. If enabled, configure
+  `HERMES_IROH_AUTO_FETCH_DIR`; destinations outside that receiver-owned root
+  are rejected.
+- `HERMES_IROH_INSECURE_TLS` disables relay certificate verification and is
+  for isolated development/testing only; production deployments must use a
+  trusted certificate.
 - The sidecar's serve process dies on stdin EOF (plugin-owned lifecycle).
   Operator-run instances should pass `--keep-alive`.

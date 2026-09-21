@@ -236,19 +236,20 @@ def iroh_peer_pair(args: dict, **_: Any) -> str:
     peer_id = parsed["peer_id"]
     state_dir = _state_dir()
 
-    # Single-use enforcement: a nonce that was already consumed means this
-    # exact ticket is being replayed.
-    nonces = NonceStore(state_dir)
-    if not nonces.mark_used(parsed["nonce"]):
-        return _err("ticket already used (nonce replay) — request a fresh ticket")
-
     if not bool(args.get("confirm")):
-        # Human-in-the-loop gate: do NOT pair; surface the decision.
+        # Human-in-the-loop gate: do NOT consume the ticket yet. The operator
+        # must be able to re-invoke this same ticket with confirm=true.
         return _err(
             "pairing requires operator confirmation. Review and re-invoke with "
             f"confirm=true to trust peer {peer_id!r} (endpoint {peer_id!r}) for "
             "bidirectional task exchange on this machine."
         )
+
+    # Consume the nonce only at the commit point, after confirmation. This
+    # preserves the documented review-then-confirm pairing flow.
+    nonces = NonceStore(state_dir)
+    if not nonces.mark_used(parsed["nonce"]):
+        return _err("ticket already used (nonce replay) — request a fresh ticket")
 
     store = PeerStore(state_dir)
     store.add_peer(
@@ -352,6 +353,7 @@ def iroh_peer_call(args: dict, **_: Any) -> str:
             endpoint_id=record.get("endpoint_id", peer_id),
             addrs=record.get("addrs") or [],
             text=safe_message,
+            context_id=context_id or None,
             timeout=int(os.environ.get("HERMES_IROH_TIMEOUT", "120")),
         )
     except SidecarUnavailable as exc:
@@ -362,8 +364,10 @@ def iroh_peer_call(args: dict, **_: Any) -> str:
     reply_text = str(reply.get("text") or "")[:_MAX_REPLY_TEXT]
     status_str = str(reply.get("status") or "failed")
 
-    record["last_called"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    store.add_peer(peer_id, record)
+    store.touch_peer(
+        peer_id,
+        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    )
 
     return _ok(
         {
@@ -573,8 +577,8 @@ def register_tools(ctx: Any) -> None:
             "description": (
                 "View or update Iroh interconnect settings. "
                 "Use key='auto_fetch' to control automatic file fetching. "
-                "Auto-fetch is enabled by default — incoming file transfers "
-                "are fetched automatically without prompting."
+                "Auto-fetch is disabled by default. Enable it only with a "
+                "receiver-configured destination policy because it writes files locally."
             ),
             "parameters": {
                 "type": "object",
@@ -599,9 +603,9 @@ def iroh_peer_settings(args: dict, **_: Any) -> str:
     """View or update Iroh interconnect settings (read/write).
 
     Supported keys:
-    - ``auto_fetch`` (bool, default true): when enabled, incoming file
-      transfers are fetched automatically without prompting. When disabled,
-      the ticket is surfaced to the agent so the user can decide.
+    - ``auto_fetch`` (bool, default false): when enabled, incoming file
+    transfers are fetched automatically without prompting. When disabled,
+    the ticket is surfaced to the agent so the user can decide.
     """
     try:
         from .settings import Settings, _state_dir
@@ -614,9 +618,14 @@ def iroh_peer_settings(args: dict, **_: Any) -> str:
     if not key:
         return _ok(store.all())
 
+    if key != "auto_fetch":
+        return _err(f"unsupported setting: {key}")
+
     value = args.get("value")
     if value is None:
         return _ok({key: store.get(key)})
+    if not isinstance(value, bool):
+        return _err("setting value must be a JSON boolean")
 
-    store.set(key, bool(value))
+    store.set(key, value)
     return _ok({key: store.get(key)})

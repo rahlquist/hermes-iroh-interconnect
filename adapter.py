@@ -44,6 +44,30 @@ except ImportError:  # standalone test/import mode
 
 _AUTO_FETCH_PREFIX = "HERMES_IROH_AUTO_FETCH\n"
 
+
+def _auto_fetch_destination(payload: Dict[str, Any]) -> Optional[str]:
+    """Validate a peer-supplied destination against a local operator root."""
+    root_raw = os.environ.get("HERMES_IROH_AUTO_FETCH_DIR", "").strip()
+    dest_raw = str(payload.get("dest") or "").strip()
+    if not root_raw:
+        return "automatic fetch is disabled until HERMES_IROH_AUTO_FETCH_DIR is configured"
+    if not dest_raw:
+        return "automatic fetch requires a destination directory"
+    root_path = Path(root_raw).expanduser()
+    dest_path = Path(dest_raw).expanduser()
+    for component in [root_path, dest_path, *dest_path.parents]:
+        if component.is_symlink():
+            return "automatic fetch paths may not contain symlinks"
+    root = root_path.resolve()
+    dest = dest_path.resolve()
+    try:
+        dest.relative_to(root)
+    except ValueError:
+        return "automatic fetch destination is outside HERMES_IROH_AUTO_FETCH_DIR"
+    if not dest.is_dir():
+        return "automatic fetch destination is not an existing directory"
+    return None
+
 try:  # The adapter only imports Hermes internals when running inside Hermes.
     from gateway.platforms.base import (
         BasePlatformAdapter,
@@ -116,6 +140,7 @@ if _HERMES_AVAILABLE:
             # loop matches replies to their originating task by context.
             self._reply_text: Dict[str, str] = {}
             self._last_delivered: Dict[str, str] = {}
+            self._inflight_task_ids: set[str] = set()
 
         # ── identity ──────────────────────────────────────────────────────
 
@@ -162,8 +187,10 @@ if _HERMES_AVAILABLE:
             # never taken from envelope content.
             task_id = str(task.get("taskId") or "")
             endpoint_id = str(task.get("peerId") or "")
-            context_id = str(task.get("contextId") or task_id)
+            remote_context_id = str(task.get("contextId") or task_id)
             text = str(task.get("text") or "")
+            if task_id in self._inflight_task_ids:
+                return
 
             peer_id = self._resolve_peer(endpoint_id)
             if not task_id or peer_id is None:
@@ -174,6 +201,8 @@ if _HERMES_AVAILABLE:
                 path.unlink(missing_ok=True)
                 return
 
+            context_id = f"{peer_id}:{remote_context_id}"
+            self._inflight_task_ids.add(task_id)
             if text.startswith(_AUTO_FETCH_PREFIX) and auto_fetch_enabled():
                 # Auto-fetch is enabled — fetch the file automatically.
                 asyncio.create_task(self._auto_fetch_file(path, task_id, text))
@@ -208,6 +237,9 @@ if _HERMES_AVAILABLE:
         async def _auto_fetch_file(self, path: Path, task_id: str, text: str) -> None:
             try:
                 payload = json.loads(text[len(_AUTO_FETCH_PREFIX):])
+                destination_error = _auto_fetch_destination(payload)
+                if destination_error:
+                    raise ValueError(destination_error)
                 result = await asyncio.to_thread(iroh_fetch_file, payload)
                 parsed = json.loads(result)
                 status = "completed" if parsed.get("success") else "failed"
@@ -216,6 +248,7 @@ if _HERMES_AVAILABLE:
                 status = "failed"
                 reply_text = str(exc)
             self._write_reply(task_id, status, reply_text)
+            self._inflight_task_ids.discard(task_id)
             path.unlink(missing_ok=True)
 
         def _write_reply(self, task_id: str, status: str, text: str) -> None:
@@ -246,7 +279,11 @@ if _HERMES_AVAILABLE:
                 self._loop = asyncio.get_running_loop()
             except RuntimeError:
                 self._loop = None
-            self.queue_dir.mkdir(parents=True, exist_ok=True)
+            self.queue_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            try:
+                self.queue_dir.chmod(0o700)
+            except OSError:
+                pass
             self._running = True
             self._poll_task = asyncio.ensure_future(self._poll_loop())
             logger.info("iroh adapter: connected (queue=%s)", self.queue_dir)
@@ -312,10 +349,15 @@ if _HERMES_AVAILABLE:
                     task = json.loads(path.read_text(encoding="utf-8"))
                 except Exception:
                     continue
-                context_id = str(task.get("contextId") or "")
+                remote_context_id = str(task.get("contextId") or "")
+                endpoint_id = str(task.get("peerId") or "")
+                peer_id = self._resolve_peer(endpoint_id) or endpoint_id
+                context_id = f"{peer_id}:{remote_context_id}"
                 reply = self._reply_text.pop(context_id, None)
                 if reply is not None:
-                    self._write_reply(str(task.get("taskId") or ""), "completed", reply)
+                    task_id = str(task.get("taskId") or "")
+                    self._write_reply(task_id, "completed", reply)
+                    self._inflight_task_ids.discard(task_id)
                     path.unlink(missing_ok=True)
 
 else:  # pragma: no cover - Hermes internals unavailable
@@ -330,6 +372,7 @@ else:  # pragma: no cover - Hermes internals unavailable
             self._running = False
             self._reply_text: Dict[str, str] = {}
             self._last_delivered: Dict[str, str] = {}
+            self._inflight_task_ids: set[str] = set()
             self._config = config
 
         @property
@@ -371,10 +414,13 @@ else:  # pragma: no cover - Hermes internals unavailable
                 return
             task_id = str(task.get("taskId") or "")
             peer_id = str(task.get("peerId") or "")
+            if task_id in self._inflight_task_ids:
+                return
             if not task_id or not peer_id or not self._known_peer(peer_id):
                 self._write_reply(task_id, "rejected", "unknown or unpaired peer")
                 path.unlink(missing_ok=True)
                 return
+            self._inflight_task_ids.add(task_id)
             # In standalone mode a pre-seeded reply models the gateway's
             # response; otherwise echo the safely framed task text.
             context_id = str(task.get("contextId") or task_id)
@@ -382,10 +428,15 @@ else:  # pragma: no cover - Hermes internals unavailable
             if reply is None:
                 reply = self._frame_inbound(peer_id, str(task.get("text") or ""))
             self._write_reply(task_id, "completed", reply)
+            self._inflight_task_ids.discard(task_id)
             path.unlink(missing_ok=True)
 
         async def connect(self, **_kwargs) -> bool:
-            self.queue_dir.mkdir(parents=True, exist_ok=True)
+            self.queue_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            try:
+                self.queue_dir.chmod(0o700)
+            except OSError:
+                pass
             self._running = True
             self._loop = asyncio.get_running_loop()
             self._poll_task = asyncio.create_task(self._poll_loop())

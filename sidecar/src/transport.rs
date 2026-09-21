@@ -11,6 +11,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+const MAX_ACTIVE_STREAMS: usize = 64;
+
 use anyhow::{bail, Context, Result};
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::{Endpoint, EndpointAddr};
@@ -101,16 +103,33 @@ pub struct PeerReply {
 }
 
 impl PeerReply {
-    pub fn parse(json: &str) -> Result<PeerReply> {
+    pub fn parse(json: &str, expected_request_id: Option<&str>) -> Result<PeerReply> {
         #[derive(Deserialize)]
         struct Wire {
+            protocol: String,
+            version: u32,
             #[serde(rename = "type")]
             msg_type: String,
+            #[serde(rename = "requestId")]
+            request_id: String,
             #[serde(default)]
             payload: serde_json::Value,
         }
         let wire: Wire =
             serde_json::from_str(json).context("reply frame is not a valid envelope")?;
+        if wire.protocol != crate::envelope::PROTOCOL_NAME
+            || wire.version != crate::envelope::PROTOCOL_VERSION
+        {
+            bail!("reply envelope has an invalid protocol or version");
+        }
+        if !matches!(wire.msg_type.as_str(), "task.result" | "task.error") {
+            bail!("unexpected reply message type {:?}", wire.msg_type);
+        }
+        if let Some(expected) = expected_request_id {
+            if wire.request_id != expected {
+                bail!("reply requestId does not match the request");
+            }
+        }
         let status = wire
             .payload
             .get("status")
@@ -154,6 +173,7 @@ pub struct HermesHandler {
     engine: Arc<dyn TaskEngine>,
     guard: Arc<crate::guard::Guarded>,
     in_flight: Arc<std::sync::atomic::AtomicUsize>,
+    stream_permits: Arc<tokio::sync::Semaphore>,
     max_frame_bytes: usize,
 }
 
@@ -164,6 +184,7 @@ impl Default for HermesHandler {
             // Defaults: 8 concurrent tasks, 30 req/peer/minute.
             guard: Arc::new(crate::guard::Guarded::new(8, 30, 60.0)),
             in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stream_permits: Arc::new(tokio::sync::Semaphore::new(MAX_ACTIVE_STREAMS)),
             max_frame_bytes: protocol::MAX_FRAME_BYTES,
         }
     }
@@ -176,6 +197,7 @@ impl HermesHandler {
             // Defaults: 8 concurrent tasks, 30 req/peer/minute.
             guard: Arc::new(crate::guard::Guarded::new(8, 30, 60.0)),
             in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stream_permits: Arc::new(tokio::sync::Semaphore::new(MAX_ACTIVE_STREAMS)),
             max_frame_bytes: protocol::MAX_FRAME_BYTES,
         }
     }
@@ -189,8 +211,9 @@ impl HermesHandler {
     ) -> Result<()> {
         // Read exactly one frame header, reject oversize before allocation.
         let mut header = [0u8; 4];
-        recv.read_exact(&mut header)
+        tokio::time::timeout(Duration::from_secs(30), recv.read_exact(&mut header))
             .await
+            .context("timed out reading frame header")?
             .context("reading frame header")?;
         let len = u32::from_be_bytes(header) as usize;
         if len > self.max_frame_bytes {
@@ -200,20 +223,44 @@ impl HermesHandler {
             );
         }
         let mut payload = vec![0u8; len];
-        recv.read_exact(&mut payload)
+        tokio::time::timeout(Duration::from_secs(30), recv.read_exact(&mut payload))
             .await
+            .context("timed out reading frame payload")?
             .context("reading frame payload")?;
 
         let text = std::str::from_utf8(&payload).context("frame payload is not valid UTF-8")?;
+        let wire_request_id = serde_json::from_str::<serde_json::Value>(text)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("requestId")
+                    .and_then(|id| id.as_str().map(str::to_owned))
+            })
+            .unwrap_or_else(|| "unknown".to_owned());
 
         // Validate the envelope; malformed input produces task.error, never a panic.
         let reply = match envelope::parse(text) {
-            Ok(env) => {
-                // Admission guard: replay, concurrency cap, per-peer rate
-                // limit. Rejected requests never reach the engine.
-                let in_flight = self.in_flight.load(std::sync::atomic::Ordering::SeqCst);
-                let guard_result = self.guard.admit(peer, &env.request_id, in_flight);
+            Ok(env) if env.msg_type == "task.request" => {
+                // Reserve a concurrency slot atomically before admission. This
+                // closes the check-then-increment race between simultaneous
+                // streams; rejected guard decisions release the reservation.
+                let mut reserved = false;
+                let guard_result = match self.in_flight.fetch_update(
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                    |count| (count < 8).then_some(count + 1),
+                ) {
+                    Ok(previous) => {
+                        reserved = true;
+                        self.guard.admit(peer, &env.request_id, previous)
+                    }
+                    Err(_) => Err(crate::guard::GuardError::Busy { cap: 8 }),
+                };
                 if let Err(err) = guard_result {
+                    if reserved {
+                        self.in_flight
+                            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                    }
                     let reply = serde_json::json!({
                         "protocol": envelope::PROTOCOL_NAME,
                         "version": envelope::PROTOCOL_VERSION,
@@ -227,9 +274,13 @@ impl HermesHandler {
                     send.finish()?;
                     return Ok(());
                 }
-                self.in_flight
-                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                let (reply_text, status) = self.engine.handle_task_from(peer, &env);
+                let (reply_text, status) = if tokio::runtime::Handle::current().runtime_flavor()
+                    == tokio::runtime::RuntimeFlavor::MultiThread
+                {
+                    tokio::task::block_in_place(|| self.engine.handle_task_from(peer, &env))
+                } else {
+                    self.engine.handle_task_from(peer, &env)
+                };
                 self.in_flight
                     .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
                 serde_json::json!({
@@ -240,12 +291,22 @@ impl HermesHandler {
                     "payload": {"status": status, "text": reply_text},
                 })
             }
+            Ok(env) => serde_json::json!({
+                "protocol": envelope::PROTOCOL_NAME,
+                "version": envelope::PROTOCOL_VERSION,
+                "type": "task.error",
+                "requestId": env.request_id,
+                "payload": {"status": "failed", "error": "expected task.request"},
+            }),
             Err(err) => serde_json::json!({
                 "protocol": envelope::PROTOCOL_NAME,
                 "version": envelope::PROTOCOL_VERSION,
                 "type": "task.error",
-                "requestId": "unknown",
-                "payload": {"status": "failed", "error": err},
+                "requestId": wire_request_id,
+                "payload": {
+                    "status": "failed",
+                    "error": err.chars().take(512).collect::<String>()
+                },
             }),
         };
 
@@ -273,10 +334,19 @@ impl iroh::protocol::ProtocolHandler for HermesHandler {
         // cloned into each per-stream task.
         let peer = PeerContext::from_connection(&conn);
         while let Ok((send, recv)) = conn.accept_bi().await {
+            let permit = match self.stream_permits.clone().try_acquire_owned() {
+                Ok(permit) => permit,
+                Err(_) => {
+                    // Drop excess streams before spawning tasks so incomplete
+                    // frames cannot exhaust the runtime before admission.
+                    continue;
+                }
+            };
             let handler = self.clone();
             let peer = peer.clone();
             let conn = conn.clone();
             tokio::spawn(async move {
+                let _permit = permit;
                 if let Err(e) = handler.handle_stream(&conn, &peer, send, recv).await {
                     // Per-stream errors are logged and dropped; the connection
                     // stays healthy for the next request.
@@ -294,8 +364,11 @@ pub async fn call_peer(
     addr: EndpointAddr,
     request_frame: Vec<u8>,
 ) -> Result<PeerReply> {
-    // Reject oversized requests before opening a connection.
-    if request_frame.len() > 4 && request_frame[..4] == 0xFFFF_FFFFu32.to_be_bytes() {
+    // Reject malformed and oversized requests before opening a connection.
+    if request_frame.len() < 4 {
+        bail!("request frame is missing its length prefix");
+    }
+    if request_frame[..4] == 0xFFFF_FFFFu32.to_be_bytes() {
         bail!("frame too large");
     }
     let header_len = u32::from_be_bytes(request_frame[..4].try_into().unwrap()) as usize;
@@ -305,6 +378,16 @@ pub async fn call_peer(
             protocol::MAX_FRAME_BYTES
         );
     }
+    if header_len + 4 != request_frame.len() {
+        bail!("request frame length prefix does not match payload");
+    }
+    let expected_request_id = serde_json::from_slice::<serde_json::Value>(&request_frame[4..])
+        .ok()
+        .and_then(|value| {
+            value
+                .get("requestId")
+                .and_then(|id| id.as_str().map(str::to_owned))
+        });
 
     let conn = endpoint.connect(addr, HERMES_ALPN).await?;
     let (mut send, mut recv) = conn.open_bi().await?;
@@ -329,5 +412,5 @@ pub async fn call_peer(
         .context("peer closed before reply payload")?;
 
     let text = std::str::from_utf8(&payload).context("reply frame payload is not valid UTF-8")?;
-    PeerReply::parse(text)
+    PeerReply::parse(text, expected_request_id.as_deref())
 }

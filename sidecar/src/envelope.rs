@@ -8,6 +8,7 @@ use serde::Deserialize;
 
 pub const PROTOCOL_NAME: &str = "hermes-interconnect";
 pub const PROTOCOL_VERSION: u32 = 1;
+const MAX_REQUEST_ID_BYTES: usize = 256;
 
 /// All message types accepted in v1.
 pub const V1_MESSAGE_TYPES: &[&str] = &[
@@ -73,6 +74,9 @@ pub fn parse(json: &str) -> Result<Envelope, String> {
     }
     if env.request_id.trim().is_empty() {
         return Err("requestId must be a non-empty string".to_string());
+    }
+    if env.request_id.len() > MAX_REQUEST_ID_BYTES {
+        return Err(format!("requestId exceeds {MAX_REQUEST_ID_BYTES} bytes"));
     }
     if !env.payload.is_null() && !env.payload.is_object() && !env.payload.is_string() {
         return Err("payload must be an object or string".to_string());

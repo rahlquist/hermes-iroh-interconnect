@@ -70,6 +70,16 @@ class TestPeerPair:
         # Nothing paired yet.
         assert PeerStore(peer_env).get_peer("bbbbbbbbbbbbbbbb") is None
 
+    def test_review_then_confirm_uses_same_ticket(self, peer_env):
+        ticket = self._ticket()
+        review = json.loads(iroh_tools.iroh_peer_pair({"ticket": ticket}, task_id=None))
+        assert review["success"] is False
+        confirmed = json.loads(
+            iroh_tools.iroh_peer_pair({"ticket": ticket, "confirm": True}, task_id=None)
+        )
+        assert confirmed["success"] is True, confirmed
+        assert PeerStore(peer_env).get_peer("bbbbbbbbbbbbbbbb") is not None
+
     def test_pairs_with_valid_ticket_and_confirmation(self, peer_env):
         out = json.loads(
             iroh_tools.iroh_peer_pair(
