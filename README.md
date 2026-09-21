@@ -229,11 +229,18 @@ so it does not exit when stdin closes.
 
 ### Operator pairing flow
 
-1. Run `iroh_peer_make_ticket` on the receiving agent.
-2. Send the ticket out-of-band to the intended peer.
+1. Run `iroh_peer_make_ticket` on the receiving agent. It returns both the ticket and a restrictive SVG QR file containing the complete `hermes-iroh://pair?...` URI.
+2. Show or send the QR only to the intended peer. A scanner can hand the URI to the pairing flow automatically; a text-only client can use the returned ticket.
 3. Run `iroh_peer_pair` once without `confirm` to review the proposed trust.
-4. Re-run it with `confirm=true` to authorize the peer.
+4. Re-run it with `confirm=true` to authorize the peer. The QR never bypasses this approval gate.
 5. Tickets expire after 15 minutes and are single-use.
+
+QR generation uses the optional `qrencode` system utility. If it is absent, the ticket is still issued and the tool returns an actionable QR-generation warning.
+
+```bash
+# Debian/Ubuntu example
+sudo apt install qrencode
+```
 
 ### CI and local verification
 
