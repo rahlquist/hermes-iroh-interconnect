@@ -347,7 +347,10 @@ else:  # pragma: no cover - Hermes internals unavailable
             try:
                 from security import PeerStore
 
-                return peer_id in PeerStore(self.state_dir).list_peers()
+                store = PeerStore(self.state_dir)
+                if peer_id in store.list_peers():
+                    return True
+                return store.find_by_endpoint_id(peer_id) is not None
             except Exception:
                 return False
 
@@ -372,22 +375,38 @@ else:  # pragma: no cover - Hermes internals unavailable
                 self._write_reply(task_id, "rejected", "unknown or unpaired peer")
                 path.unlink(missing_ok=True)
                 return
-            # No gateway loop in standalone mode: complete with the framed
-            # text echoed back so the file contract is still exercised.
-            self._write_reply(task_id, "completed", self._frame_inbound(peer_id, str(task.get("text") or "")))
+            # In standalone mode a pre-seeded reply models the gateway's
+            # response; otherwise echo the safely framed task text.
+            context_id = str(task.get("contextId") or task_id)
+            reply = self._reply_text.pop(context_id, None)
+            if reply is None:
+                reply = self._frame_inbound(peer_id, str(task.get("text") or ""))
+            self._write_reply(task_id, "completed", reply)
             path.unlink(missing_ok=True)
 
         async def connect(self, **_kwargs) -> bool:
             self.queue_dir.mkdir(parents=True, exist_ok=True)
             self._running = True
+            self._loop = asyncio.get_running_loop()
+            self._poll_task = asyncio.create_task(self._poll_loop())
             return True
 
         async def disconnect(self) -> None:
             self._running = False
+            if self._poll_task is not None:
+                self._poll_task.cancel()
+                await asyncio.gather(self._poll_task, return_exceptions=True)
+                self._poll_task = None
+
+        async def _poll_loop(self) -> None:
+            while self._running:
+                await self._poll_once()
+                await asyncio.sleep(0.05)
 
         async def send(self, chat_id: str, content: str, reply_to=None, metadata=None):
-            self._last_delivered[str(chat_id)] = content
-            self._reply_text[str(chat_id)] = content
+            safe_content = redact_outbound(content)
+            self._last_delivered[str(chat_id)] = safe_content
+            self._reply_text[str(chat_id)] = safe_content
 
             class _R:
                 def __init__(self, chat_id: str):

@@ -79,9 +79,9 @@ class TestAvailability:
     def test_install_hint_shape(self):
         hint = sendme_install_hint()
         assert hint["success"] is False
-        assert "SendMe is not installed" in hint["error"]
+        assert "send_hermes is not installed" in hint["error"]
         assert "cargo install" in hint["remedy"]["install"]
-        assert hint["remedy"]["verify"] == "sendme --version"
+        assert hint["remedy"]["verify"] == "send_hermes --version"
 
     def test_missing_binary_returns_hint_not_exception(self, transfer_env, monkeypatch):
         monkeypatch.setenv("PATH", "/nonexistent-bin")

@@ -198,6 +198,7 @@ class TestRegistration:
             "iroh_send_file",
             "iroh_fetch_file",
             "iroh_transfer_status",
+            "iroh_peer_settings",
         }
         # Handlers dispatch with the real registry's args-dict convention.
         out = json.loads(registered["iroh_peer_list"]({}, task_id=None))

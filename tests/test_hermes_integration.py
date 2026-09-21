@@ -20,9 +20,15 @@ import pytest
 PLUGIN_DIR = Path(__file__).resolve().parent.parent
 HERMES_REPO = Path.home() / ".hermes" / "hermes-agent"
 
-pytestmark = pytest.mark.skipif(
-    not HERMES_REPO.exists(), reason="Hermes source checkout not found"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not HERMES_REPO.exists(), reason="Hermes source checkout not found"
+    ),
+    pytest.mark.skipif(
+        pytest.importorskip("yaml", reason="PyYAML is required by Hermes") is None,
+        reason="PyYAML is required by Hermes",
+    ),
+]
 
 _TOOL_NAMES = (
     "iroh_peer_status",
