@@ -126,10 +126,17 @@ pub async fn bind_endpoint(
 ) -> Result<(Endpoint, String)> {
     let key = hermes_iroh_sidecar::identity::load_or_create(state_dir.join("endpoint.key"))?;
     let mode = relay_mode(policy)?;
-    let endpoint = Endpoint::builder(presets::Minimal)
+    let mut builder = Endpoint::builder(presets::Minimal)
         .secret_key(key)
         .relay_mode(mode)
-        .alpns(vec![hermes_iroh_sidecar::transport::HERMES_ALPN.to_vec()])
+        .alpns(vec![hermes_iroh_sidecar::transport::HERMES_ALPN.to_vec()]);
+    if std::env::var("HERMES_IROH_INSECURE_TLS")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
+    {
+        builder = builder.ca_tls_config(iroh::tls::CaTlsConfig::insecure_skip_verify());
+    }
+    let endpoint = builder
         .bind()
         .await
         .context("binding iroh endpoint")?;
