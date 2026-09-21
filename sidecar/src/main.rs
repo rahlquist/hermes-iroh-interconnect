@@ -43,6 +43,13 @@ fn read_stdin_json() -> Result<ControlRequest> {
 }
 
 fn main() -> Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            std::env::var("RUST_LOG")
+                .unwrap_or_else(|_| "hermes_iroh_sidecar=info,iroh=info".to_string()),
+        )
+        .try_init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(|s| s.as_str()) {
         Some("id") => {
