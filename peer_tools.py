@@ -370,6 +370,7 @@ def iroh_peer_call(args: dict, **_: Any) -> str:
             endpoint_id=record.get("endpoint_id", peer_id),
             addrs=record.get("addrs") or [],
             text=safe_message,
+            auth_secret=str(record.get("secret") or ""),
             context_id=context_id or None,
             timeout=int(os.environ.get("HERMES_IROH_TIMEOUT", "120")),
         )

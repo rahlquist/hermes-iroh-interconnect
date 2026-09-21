@@ -207,14 +207,15 @@ class SidecarSession:
         endpoint_id: str,
         addrs: List[str],
         text: str,
+        auth_secret: str,
         context_id: Optional[str] = None,
         timeout: int = 120,
     ) -> Dict[str, Any]:
-        """Dial a peer by endpoint id + addresses and run one task."""
+        """Dial a peer by endpoint id + addresses and run one authenticated task."""
         params: Dict[str, Any] = {
             "endpointId": endpoint_id,
             "addrs": addrs,
-            "task": {"text": text},
+            "task": {"text": text, "authSecret": auth_secret},
         }
         if context_id:
             params["requestId"] = context_id

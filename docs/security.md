@@ -1,6 +1,6 @@
 # Security model
 
-Scope: v0.3.0 — bidirectional task exchange (outbound dialing + inbound
+Scope: v0.3.1 — bidirectional task exchange (outbound dialing + inbound
 adapter + admission guard + operator-configurable relay). This document
 states what is enforced, what is deferred, and what the operator must not
 assume.
@@ -17,11 +17,12 @@ assume.
    peer-id charset, secret length, **expiry** (15 minutes) and **nonce
    shape** are enforced before anything is stored. The nonce is single-use
    (`NonceStore`, 0600); replays are refused after confirmation. The ticket
-   secret is a bearer capability, not a digital signature; the security
-   boundary is explicit operator confirmation followed by TLS-authenticated
-   EndpointId authorization. Pairing additionally requires explicit operator
-   confirmation (`confirm=true` on the tool call) — the first, unconfirmed
-   invocation surfaces the decision instead of pairing.
+   secret is stored with the paired endpoint record and sent inside every task
+   envelope; the receiving adapter compares it in constant time before
+   dispatch. A forged ticket therefore cannot authenticate task traffic.
+   Pairing additionally requires an explicit `confirm=true` tool argument; this
+   is an application confirmation gate, not yet a desktop/operator approval
+   prompt.
 3. **Peer state.** Peers live in `<HERMES_HOME>/iroh-interconnect/peers.json`
    with mode `0600` (enforced on every write and repaired on open).
 
@@ -33,7 +34,7 @@ assume.
   fields are checked; malformed envelopes yield a structured `task.error`.
   Invalid framing, UTF-8, truncated reads, and read timeouts close the stream
   without dispatching input.
-- **Unknown peers.** `iroh_peer_call` refuses any peer not in the store;
+- **Unknown peers and forged task credentials.** `iroh_peer_call` refuses any peer not in the store;
   inbound tasks are authorized by the sender's **TLS-authenticated Iroh
   endpoint id** (captured at the QUIC connection, not taken from envelope
   content) mapped through the peer store — unpaired senders get a
@@ -65,9 +66,9 @@ assume.
   Hermes wrapper that fixes the `can_access` OR-bypass and `FsTransfer`
   range-count allocation. Not wired.
 - **Pairing confirmation UX.** Landed in v0.3: tickets carry expiry +
-  single-use nonces and pairing requires explicit operator confirmation
-  (`confirm=true`). What remains is a UI surface for the confirmation
-  prompt (currently the model must re-invoke the tool with the flag).
+  single-use nonces and pairing requires an explicit confirmation argument
+  (`confirm=true`). This is an application-level gate; a dedicated
+  desktop/operator approval prompt remains future work.
 - **Relay policy (v0.3).** The relay set is now operator-configurable via
   `HERMES_IROH_RELAY` / the sidecar's `--relay` flag: `default` (n0 public
   relays), `off` (LAN-only, direct addrs required), or a self-hosted relay

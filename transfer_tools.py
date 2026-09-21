@@ -98,6 +98,25 @@ def _contains_symlink(path: Path) -> bool:
     return False
 
 
+def _received_tree_is_safe(root: Path, dest: Path) -> bool:
+    """Ensure a provider-created result stays inside *dest* and has no links."""
+    try:
+        if root.is_symlink():
+            return False
+        root.resolve().relative_to(dest.resolve())
+    except (OSError, ValueError):
+        return False
+    if root.is_dir():
+        for entry in root.rglob("*"):
+            try:
+                if entry.is_symlink():
+                    return False
+                entry.resolve().relative_to(dest.resolve())
+            except (OSError, ValueError):
+                return False
+    return True
+
+
 def _normalize_ticket(raw: str) -> Optional[str]:
     """Extracts the bare ticket token from user/CLI input. Accepts either
     the raw ticket or the legacy 'sendme receive <ticket>' string."""
@@ -482,6 +501,12 @@ def iroh_fetch_file(args: dict, **_: Any) -> str:
                 "verified; inspect .sendme-* state there"
             )
         result = entries[0]
+
+    if not _received_tree_is_safe(result, dest):
+        return _err(
+            "receive produced a symlink or path outside the destination; "
+            "refusing to report success"
+        )
 
     return _ok(
         {

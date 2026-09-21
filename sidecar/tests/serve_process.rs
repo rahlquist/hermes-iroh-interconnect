@@ -182,7 +182,7 @@ fn dial_performs_full_task_round_trip_between_two_serve_processes() {
         "params": {
             "endpointId": id_b,
             "addrs": addrs_b,
-            "task": {"text": "what is 2+2?"}
+            "task": {"text": "what is 2+2?", "authSecret": "shared-secret"}
         }
     }));
     let result = &reply["result"];

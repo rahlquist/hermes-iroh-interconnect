@@ -117,6 +117,7 @@ def test_dial_real_peer_to_peer(sidecar_binary, tmp_path):
                 endpoint_id=status_b["endpointId"],
                 addrs=status_b["addrs"],
                 text="hello from A",
+                auth_secret="shared-secret",
                 timeout=90,
             )
         finally:

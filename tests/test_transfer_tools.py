@@ -227,6 +227,31 @@ class TestFetchFile:
         )
         assert out["success"] is False
 
+    def test_fetch_rejects_received_symlink(
+        self, transfer_env, tmp_path, monkeypatch
+    ):
+        fake = tmp_path / "fake-sendme-symlink.sh"
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        fake.write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "receive" ]; then\n'
+            '  ln -s "$OUTSIDE" "$PWD/received-link"\n'
+            '  exit 0\n'
+            'fi\n'
+        )
+        fake.chmod(0o755)
+        monkeypatch.setattr(transfer_tools, "sendme_available", lambda: str(fake))
+        monkeypatch.setenv("OUTSIDE", str(outside))
+        dest = tmp_path / "downloads"
+        dest.mkdir()
+        out = json.loads(iroh_fetch_file({
+            "ticket": "sendme receive 4abcdtickeq1234567890abcdef1234567890abcd",
+            "dest": str(dest),
+        }, task_id=None))
+        assert out["success"] is False
+        assert "symlink" in out["error"]
+
     def test_fetch_verifies_result(
         self, transfer_env, tmp_path, monkeypatch
     ):

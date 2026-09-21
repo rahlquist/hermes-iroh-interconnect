@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -202,6 +203,20 @@ if _HERMES_AVAILABLE:
                     "iroh adapter: rejected task %s from unpaired endpoint", task_id
                 )
                 self._write_reply(task_id, "rejected", "unknown or unpaired peer")
+                path.unlink(missing_ok=True)
+                return
+
+            try:
+                record = PeerStore(self.state_dir).get_peer(peer_id) or {}
+            except Exception:
+                record = {}
+            supplied_secret = str(task.get("authSecret") or "")
+            expected_secret = str(record.get("secret") or "")
+            if not expected_secret or not supplied_secret or not secrets.compare_digest(
+                supplied_secret, expected_secret
+            ):
+                logger.warning("iroh adapter: rejected task %s with invalid peer secret", task_id)
+                self._write_reply(task_id, "rejected", "peer authentication failed")
                 path.unlink(missing_ok=True)
                 return
 
@@ -444,8 +459,24 @@ else:  # pragma: no cover - Hermes internals unavailable
             peer_id = str(task.get("peerId") or "")
             if task_id in self._inflight_task_ids:
                 return
-            if not task_id or not peer_id or not self._known_peer(peer_id):
-                self._write_reply(task_id, "rejected", "unknown or unpaired peer")
+            try:
+                from security import PeerStore
+                store = PeerStore(self.state_dir)
+                resolved_peer = store.find_by_endpoint_id(peer_id) or peer_id
+                record = store.get_peer(resolved_peer) or {}
+            except Exception:
+                record = {}
+            supplied_secret = str(task.get("authSecret") or "")
+            expected_secret = str(record.get("secret") or "")
+            if (
+                not task_id
+                or not peer_id
+                or not self._known_peer(peer_id)
+                or not expected_secret
+                or not supplied_secret
+                or not secrets.compare_digest(supplied_secret, expected_secret)
+            ):
+                self._write_reply(task_id, "rejected", "peer authentication failed")
                 path.unlink(missing_ok=True)
                 return
             self._inflight_task_ids.add(task_id)

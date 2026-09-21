@@ -1,5 +1,7 @@
 # hermes-iroh-interconnect
 
+See [CHANGELOG.md](CHANGELOG.md) for the v0.3.1 point-release changes.
+
 Connect your Hermes agents directly over the internet or across private networks. This plugin gives one Hermes agent a secure, authenticated way to send another agent a task, receive the result, and optionally exchange files through send_hermes — without relying on a central message broker or cloud service. You gain persistent agent identities, explicit operator-approved pairing, encrypted QUIC transport with NAT traversal and relay fallback, inbound peer authorization, replay/rate/concurrency protection, and a native Hermes platform adapter. In practical terms: your agents can collaborate as peers, delegate work across machines, and pass artifact-transfer tickets while retaining control over who is trusted and what leaves each host.
 
 > [!WARNING]
@@ -31,7 +33,7 @@ At a technical level, each Hermes host contains a Python plugin and a Rust
 sidecar. The plugin handles tools, trust, redaction, and adapter policy. The
 sidecar owns the persistent Iroh identity, QUIC, ALPN, and bounded frames.
 
-Status: **v0.3.0 — bidirectional transport plus optional artifacts**.
+Status: **v0.3.1 — hardened bidirectional transport plus optional artifacts**.
 Real QUIC peer dialing, persistent endpoint identity, serve-mode control
 plane, inbound authorization, admission hardening, relay configuration, and
 optional send_hermes-backed file transfer are implemented and covered end-to-end:
@@ -87,7 +89,7 @@ non-idempotent task is not silently run twice.
 
 The diagram shows the full flow: pair once with a ticket, remember the stable EndpointId, find a network path, prove identity plus authorize the peer, and exchange work. A bottom note explains network-drop behavior.
 
-## What's verified (v0.3.0)
+## What's verified (v0.3.1)
 
 - Two live sidecar processes dial each other over real QUIC and exchange
   tasks (Rust `serve_process` tests; Python `SidecarSession` tests).

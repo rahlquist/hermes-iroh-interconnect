@@ -22,6 +22,8 @@ __all__ = ["register"]
 
 def register(ctx) -> None:
     """Plugin entry point — called by the Hermes plugin system."""
+    errors = []
+
     # 1) Client tools (outbound).
     try:
         try:
@@ -31,11 +33,9 @@ def register(ctx) -> None:
             from peer_tools import register_tools
         register_tools(ctx)
         logger.info("hermes-iroh-interconnect: client tools registered")
-    except Exception:
-        logger.warning(
-            "hermes-iroh-interconnect: failed to register client tools",
-            exc_info=True,
-        )
+    except Exception as exc:
+        errors.append(("client tools", exc))
+        logger.exception("hermes-iroh-interconnect: failed to register client tools")
 
     # 2) Inbound platform adapter.
     try:
@@ -67,8 +67,10 @@ def register(ctx) -> None:
             ),
         )
         logger.info("hermes-iroh-interconnect: platform adapter registered")
-    except Exception:
-        logger.warning(
-            "hermes-iroh-interconnect: failed to register platform adapter",
-            exc_info=True,
-        )
+    except Exception as exc:
+        errors.append(("platform adapter", exc))
+        logger.exception("hermes-iroh-interconnect: failed to register platform adapter")
+
+    if errors:
+        failed = ", ".join(name for name, _ in errors)
+        raise RuntimeError(f"hermes-iroh-interconnect registration failed: {failed}") from errors[0][1]

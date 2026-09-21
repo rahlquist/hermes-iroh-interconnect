@@ -225,15 +225,25 @@ async fn handle_rpc(endpoint: &Endpoint, policy: &RelayPolicy, req: RpcRequest) 
                 .unwrap_or_default();
             let addr = endpoint_addr(&endpoint_id, &addrs, policy)?;
 
-            let text = req
+            let task = req
                 .params
                 .get("task")
-                .and_then(|t| t.get("text"))
+                .ok_or_else(|| anyhow::anyhow!("params.task is required"))?;
+            let text = task
+                .get("text")
                 .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            let auth_secret = task
+                .get("authSecret")
+                .and_then(|secret| secret.as_str())
                 .unwrap_or("")
                 .to_string();
             if text.is_empty() {
                 bail!("params.task.text is required");
+            }
+            if auth_secret.is_empty() {
+                bail!("params.task.authSecret is required");
             }
             if text.len() > protocol::MAX_FRAME_BYTES {
                 bail!("task text exceeds the frame cap");
@@ -250,7 +260,7 @@ async fn handle_rpc(endpoint: &Endpoint, policy: &RelayPolicy, req: RpcRequest) 
                     .filter(|id| !id.trim().is_empty() && id.len() <= 256)
                     .map(str::to_owned)
                     .unwrap_or_else(|| format!("dial-{:032x}", rand::random::<u128>())),
-                "payload": {"text": text},
+                "payload": {"text": text, "authSecret": auth_secret},
             });
             let payload = serde_json::to_vec(&request)?;
             let frame = protocol::encode_frame(&payload);

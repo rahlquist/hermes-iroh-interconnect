@@ -90,6 +90,7 @@ def test_queue_roundtrip_via_files(adapter_env):
         "peerId": "id-1",  # TLS-authenticated endpoint id of inboundpeer1
         "contextId": "ctx-9",
         "text": "Summarize the docs",
+        "authSecret": "s" * 20,
     }))
 
     # Simulate the gateway's reply arriving via send().
@@ -111,6 +112,25 @@ def test_queue_roundtrip_via_files(adapter_env):
     assert reply["status"] == "completed"
     assert "summary" in reply["text"]
     # Task file consumed.
+    assert not task_file.exists()
+
+
+def test_invalid_peer_secret_is_rejected(adapter_env):
+    adapter = _make_adapter()
+    queue_dir = adapter.queue_dir
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    task_file = queue_dir / "task-bad-secret.json"
+    task_file.write_text(json.dumps({
+        "taskId": "task-bad-secret",
+        "peerId": "id-1",
+        "contextId": "ctx-secret",
+        "text": "who am I?",
+        "authSecret": "wrong-secret",
+    }))
+    adapter._process_task_file(task_file)
+    reply = json.loads((queue_dir / "reply-task-bad-secret.json").read_text())
+    assert reply["status"] == "rejected"
+    assert "authentication" in reply["text"]
     assert not task_file.exists()
 
 
