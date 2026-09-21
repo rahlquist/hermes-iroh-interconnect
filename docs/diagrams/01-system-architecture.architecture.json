@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {"title":"Hermes Iroh Interconnect — System Architecture","subtitle":"What runs on each machine, and what the relay does","viewBox":[1180,620]},
+  "components": [
+    {"id":"agent_a","type":"frontend","label":"Hermes Agent A","sublabel":"tools + adapter","pos":[55,260],"size":[150,68]},
+    {"id":"plugin_a","type":"backend","label":"Python Plugin A","sublabel":"trust + policy","pos":[245,260],"size":[150,68]},
+    {"id":"sidecar_a","type":"backend","label":"Rust Sidecar A","sublabel":"Iroh endpoint","pos":[435,260],"size":[150,68]},
+    {"id":"relay","type":"cloud","label":"Self-hosted Relay","sublabel":"HTTPS/WSS 3443 + QUIC 7842","pos":[510,70],"size":[190,68]},
+    {"id":"sidecar_b","type":"backend","label":"Rust Sidecar B","sublabel":"Iroh endpoint","pos":[735,260],"size":[150,68]},
+    {"id":"plugin_b","type":"backend","label":"Python Plugin B","sublabel":"adapter + handoff","pos":[925,260],"size":[150,68]},
+    {"id":"agent_b","type":"frontend","label":"Hermes Agent B","sublabel":"receives tasks","pos":[925,405],"size":[150,68]},
+    {"id":"store_b","type":"database","label":"Peer State","sublabel":"key + paired peers","pos":[735,405],"size":[150,68]}
+  ],
+  "boundaries": [
+    {"kind":"security-group","label":"Machine A — private process boundary","wraps":["agent_a","plugin_a","sidecar_a"]},
+    {"kind":"security-group","label":"Machine B — private process boundary","wraps":["sidecar_b","plugin_b","agent_b","store_b"]}
+  ],
+  "connections": [
+    {"from":"agent_a","to":"plugin_a","label":"tool call","variant":"emphasis","labelDy":-28},
+    {"from":"plugin_a","to":"sidecar_a","label":"localhost stdio JSON-RPC","labelDy":-28},
+    {"from":"sidecar_a","to":"sidecar_b","label":"encrypted QUIC / Hermes ALPN","variant":"emphasis"},
+    {"from":"sidecar_a","to":"relay","label":"WSS registration / fallback","variant":"dashed"},
+    {"from":"sidecar_b","to":"relay","label":"WSS registration / fallback","variant":"dashed"},
+    {"from":"sidecar_b","to":"plugin_b","label":"queue handoff","labelDy":-28},
+    {"from":"plugin_b","to":"agent_b","label":"trusted adapter event","labelDy":-62},
+    {"from":"plugin_b","to":"store_b","label":"paired identity lookup","variant":"security"}
+  ],
+  "cards": [
+    {"dot":"rose","title":"Trust boundary","items":["The relay forwards encrypted traffic","The relay is not the peer identity authority"]},
+    {"dot":"cyan","title":"Optional artifacts","items":["send_hermes is a separate provider","The task channel carries its ticket, not file bytes"]}
+  ]
+}

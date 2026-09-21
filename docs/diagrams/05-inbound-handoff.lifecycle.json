@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {"title":"Inbound Task and File Handoff","subtitle":"What happens after a paired peer reaches your sidecar","viewBox":[980,700]},
+  "lanes":[{"id":"main","label":"Inbound lifecycle"},{"id":"waiting","label":"Operator / adapter decision"},{"id":"terminal","label":"Terminal outcomes"}],
+  "states":[
+    {"id":"received","type":"start","label":"Frame received","sublabel":"QUIC + ALPN", "lane":"main","col":0,"step":"01"},
+    {"id":"validated","type":"active","label":"Validate envelope","sublabel":"size + schema + replay", "lane":"main","col":1,"step":"02"},
+    {"id":"authorized","type":"active","label":"Authorize peer","sublabel":"paired EndpointId", "lane":"main","col":2,"step":"03"},
+    {"id":"queued","type":"active","label":"Queue handoff","sublabel":"task-*.json", "lane":"main","col":3,"step":"04"},
+    {"id":"auto","type":"active","label":"Auto-fetch","sublabel":"default ON", "lane":"waiting","col":1},
+    {"id":"manual","type":"waiting","label":"Surface to agent","sublabel":"auto_fetch OFF", "lane":"waiting","col":2},
+    {"id":"reply","type":"success","label":"Reply returned","sublabel":"reply-*.json", "lane":"terminal","col":1},
+    {"id":"reject","type":"failure","label":"Reject / fail closed","sublabel":"unknown, replay, oversize", "lane":"terminal","col":0},
+    {"id":"timeout","type":"failure","label":"Bounded timeout","sublabel":"no adapter reply", "lane":"terminal","col":2}
+  ],
+  "transitions":[
+    {"from":"received","to":"validated","variant":"emphasis"},
+    {"from":"validated","to":"authorized","variant":"emphasis"},
+    {"from":"validated","to":"reject", "variant":"security"},
+    {"from":"authorized","to":"queued","variant":"emphasis"},
+    {"from":"authorized","to":"reject", "variant":"security"},
+    {"from":"queued","to":"auto", "variant":"emphasis"},
+    {"from":"queued","to":"manual", "variant":"security"},
+    {"from":"auto","to":"reply", "variant":"emphasis"},
+    {"from":"manual","to":"reply", "variant":"emphasis"},
+    {"from":"queued","to":"timeout", "variant":"dashed"}
+  ],
+  "cards":[{"dot":"rose","title":"Safety rule","items":["Remote text is framed as untrusted input","Slash commands are neutralized","Peer identity comes from authenticated QUIC, not message text"]}]
+}

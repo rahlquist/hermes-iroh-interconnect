@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {"title":"Three or More Hermes Clients","subtitle":"A relay is a path service; trust remains per peer","viewBox":[1180,700]},
+  "components":[
+    {"id":"a","type":"frontend","label":"Agent A","sublabel":"operator / sender","pos":[55,105],"size":[145,64]},
+    {"id":"sa","type":"backend","label":"Sidecar A","sublabel":"stable EndpointId","pos":[55,220],"size":[145,64]},
+    {"id":"b","type":"frontend","label":"Agent B","sublabel":"paired peer","pos":[55,490],"size":[145,64]},
+    {"id":"sb","type":"backend","label":"Sidecar B","sublabel":"stable EndpointId","pos":[245,490],"size":[145,64]},
+    {"id":"relay","type":"cloud","label":"Relay","sublabel":"WSS + QUIC fallback","pos":[500,300],"size":[180,70]},
+    {"id":"c","type":"frontend","label":"Agent C","sublabel":"paired peer","pos":[870,105],"size":[145,64]},
+    {"id":"sc","type":"backend","label":"Sidecar C","sublabel":"stable EndpointId","pos":[870,220],"size":[145,64]},
+    {"id":"d","type":"frontend","label":"Agent D","sublabel":"paired peer","pos":[870,490],"size":[145,64]},
+    {"id":"sd","type":"backend","label":"Sidecar D","sublabel":"stable EndpointId","pos":[680,490],"size":[145,64]},
+    {"id":"trust","type":"security","label":"Local peer store","sublabel":"A chooses B/C/D explicitly","pos":[500,590],"size":[180,70]}
+  ],
+  "boundaries":[
+    {"kind":"security-group","label":"Client A","wraps":["a","sa"]},
+    {"kind":"security-group","label":"Client B","wraps":["b","sb"]},
+    {"kind":"security-group","label":"Client C","wraps":["c","sc"]},
+    {"kind":"security-group","label":"Client D","wraps":["d","sd"]}
+  ],
+  "connections":[
+    {"from":"a","to":"sa"},
+    {"from":"b","to":"sb"},
+    {"from":"c","to":"sc"},
+    {"from":"d","to":"sd"},
+    {"from":"sa","to":"relay","variant":"dashed"},
+    {"from":"sb","to":"relay","variant":"dashed"},
+    {"from":"sc","to":"relay","variant":"dashed"},
+    {"from":"sd","to":"relay","variant":"dashed"},
+    {"from":"sa","to":"sc","label":"direct when possible","variant":"emphasis"},
+    {"from":"sa","to":"trust","label":"authorize by EndpointId","variant":"security"}
+  ],
+  "cards":[{"dot":"cyan","title":"Scaling rule","items":["Each client has one persistent identity","Each client has its own paired-peer registry","Pairing A with B does not trust C or D"]},{"dot":"amber","title":"Direct first","items":["Iroh attempts a direct encrypted path","The relay provides discovery or forwarding when needed"]}]
+}

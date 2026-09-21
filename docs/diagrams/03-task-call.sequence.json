@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {"title":"Send a Task Between Agents","subtitle":"Fresh path discovery, authenticated QUIC, adapter handoff","viewBox":[920,820]},
+  "participants":[
+    {"id":"a","type":"frontend","label":"Agent A","sublabel":"iroh_peer_call"},
+    {"id":"pa","type":"backend","label":"Plugin A","sublabel":"peer policy"},
+    {"id":"sa","type":"backend","label":"Sidecar A","sublabel":"Iroh endpoint"},
+    {"id":"r","type":"cloud","label":"Relay","sublabel":"path fallback"},
+    {"id":"sb","type":"backend","label":"Sidecar B","sublabel":"QUIC listener"},
+    {"id":"pb","type":"backend","label":"Plugin B","sublabel":"file handoff"},
+    {"id":"b","type":"frontend","label":"Agent B","sublabel":"Hermes session"}
+  ],
+  "segments":[{"from":160,"to":300,"label":"01 / REQUEST"},{"from":300,"to":490,"label":"02 / CONNECT"},{"from":490,"to":720,"label":"03 / HANDOFF + REPLY"}],
+  "messages":[
+    {"from":"a","to":"pa","y":190,"label":"task text"},
+    {"from":"pa","to":"sa","y":235,"label":"validate paired peer"},
+    {"from":"sa","to":"r","y":325,"label":"discover current path","variant":"dashed"},
+    {"from":"sa","to":"sb","y":390,"label":"QUIC + TLS EndpointId","variant":"security"},
+    {"from":"sb","to":"pb","y":470,"label":"bounded JSON frame"},
+    {"from":"pb","to":"b","y":550,"label":"untrusted inbound event"},
+    {"from":"b","to":"pb","y":620,"label":"agent result"},
+    {"from":"pb","to":"sb","y":650,"label":"reply file"},
+    {"from":"sb","to":"sa","y":700,"label":"encrypted reply","variant":"return"},
+    {"from":"sa","to":"a","y":730,"label":"completed","variant":"return"}
+  ],
+  "activations":[{"participant":"sa","from":220,"to":790,"type":"backend"},{"participant":"sb","from":380,"to":750,"type":"backend"},{"participant":"pb","from":460,"to":700,"type":"backend"}],
+  "cards":[{"dot":"amber","title":"If the network drops","items":["The current call fails with a bounded error","Pairing remains valid","The next call performs fresh discovery","Non-idempotent work is not blindly replayed"]}]
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {"title":"Send a File to a Paired Agent","subtitle":"The task channel carries a ticket; send_hermes carries the bytes","viewBox":[1120,720]},
+  "stages":[{"label":"Sender"},{"label":"Ticket handoff"},{"label":"File provider"},{"label":"Receiver"},{"label":"Verified file"}],
+  "nodes":[
+    {"id":"source","type":"frontend","label":"Agent A","sublabel":"iroh_send_file", "stage":0,"row":0},
+    {"id":"provider","type":"backend","label":"send_hermes","sublabel":"long-lived provider", "stage":2,"row":0},
+    {"id":"ticket","type":"messagebus","label":"QUIC task ticket","sublabel":"bearer capability", "stage":1,"row":1},
+    {"id":"fetch","type":"backend","label":"Auto-fetch adapter","sublabel":"default: enabled", "stage":3,"row":0},
+    {"id":"dest","type":"database","label":"Destination","sublabel":"existing directory", "stage":4,"row":0,"width":140},
+    {"id":"policy","type":"security","label":"Trust + settings","sublabel":"paired peer / auto_fetch", "stage":3,"row":2}
+  ],
+  "flows":[
+    {"from":"source","to":"provider","label":"path + relay", "variant":"emphasis"},
+    {"from":"provider","to":"ticket","label":"ticket text", "classification":"bearer capability","labelDy":-20},
+    {"from":"ticket","to":"fetch","label":"authenticated task", "classification":"untrusted until validated", "variant":"security","labelDy":24},
+    {"from":"policy","to":"fetch","label":"allow / surface", "classification":"policy gate", "variant":"security"},
+    {"from":"fetch","to":"provider","label":"send_hermes receive", "variant":"dashed","labelDy":24},
+    {"from":"provider","to":"dest","label":"stream + hash verify", "variant":"emphasis","labelDy":-23}
+  ],
+  "cards":[{"dot":"amber","title":"Auto-fetch off","items":["Set auto_fetch=false","The ticket is surfaced to the agent","The user decides whether to fetch"]},{"dot":"rose","title":"Important","items":["Keep send_hermes running until completion","Never publish a ticket in a public channel"]}]
+}

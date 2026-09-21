@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {"title":"Pair Two Hermes Agents","subtitle":"One-time operator-approved trust setup","output":"02-pairing.html"},
+  "lanes":[{"id":"owner","label":"Operator"},{"id":"a","label":"Agent A"},{"id":"b","label":"Agent B"},{"id":"failure","label":"Reject / retry","variant":"exception"}],
+  "phases":[{"id":"ticket","label":"CREATE TICKET","fromCol":0,"toCol":1},{"id":"review","label":"REVIEW + AUTHORIZE","fromCol":1,"toCol":3},{"id":"ready","label":"READY","fromCol":3,"toCol":5}],
+  "groups":[],
+  "mainPath":["make","share","inspect","confirm","store","ready"],
+  "nodes":[
+    {"id":"make","lane":"owner","col":0,"type":"frontend","label":"Make ticket","sublabel":"on receiving agent"},
+    {"id":"share","lane":"owner","col":1,"type":"security","label":"Share ticket","sublabel":"out-of-band","width":108},
+    {"id":"inspect","lane":"a","col":2,"type":"security","label":"Review peer","sublabel":"EndpointId + expiry"},
+    {"id":"confirm","lane":"a","col":3,"type":"security","label":"Confirm=true","sublabel":"explicit approval"},
+    {"id":"store","lane":"a","col":5,"type":"database","label":"Store peer","sublabel":"0600 peer registry"},
+    {"id":"ready","lane":"b","col":5,"type":"frontend","label":"Paired","sublabel":"future calls use key"},
+    {"id":"reject","lane":"failure","col":2,"type":"security","label":"Reject","sublabel":"wrong peer / expired"}
+  ],
+  "edges":[
+    {"from":"make","to":"share","label":"ticket","variant":"emphasis","labelDy":-20},
+    {"from":"share","to":"inspect","label":"copy once","route":"drop"},
+    {"from":"inspect","to":"confirm","label":"approve","variant":"security","labelDy":-20},
+    {"from":"inspect","to":"reject","label":"fail closed","variant":"security","route":"drop"},
+    {"from":"confirm","to":"store","route":"straight"},
+    {"from":"store","to":"ready","label":"trust recorded","route":"drop","variant":"emphasis"}
+  ],
+  "cards":[{"dot":"amber","title":"Ticket rules","items":["Tickets expire after 15 minutes","Tickets are single-use","Pairing stores a stable EndpointId, not a temporary IP"]}]
+}

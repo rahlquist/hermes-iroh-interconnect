@@ -1,6 +1,6 @@
 # hermes-iroh-interconnect
 
-Connect your Hermes agents directly over the internet or across private networks. This plugin gives one Hermes agent a secure, authenticated way to send another agent a task, receive the result, and optionally exchange files through SendMe — without relying on a central message broker or cloud service. You gain persistent agent identities, explicit operator-approved pairing, encrypted QUIC transport with NAT traversal and relay fallback, inbound peer authorization, replay/rate/concurrency protection, and a native Hermes platform adapter. In practical terms: your agents can collaborate as peers, delegate work across machines, and pass artifact-transfer tickets while retaining control over who is trusted and what leaves each host.
+Connect your Hermes agents directly over the internet or across private networks. This plugin gives one Hermes agent a secure, authenticated way to send another agent a task, receive the result, and optionally exchange files through send_hermes — without relying on a central message broker or cloud service. You gain persistent agent identities, explicit operator-approved pairing, encrypted QUIC transport with NAT traversal and relay fallback, inbound peer authorization, replay/rate/concurrency protection, and a native Hermes platform adapter. In practical terms: your agents can collaborate as peers, delegate work across machines, and pass artifact-transfer tickets while retaining control over who is trusted and what leaves each host.
 
 > [!WARNING]
 > Do not connect the plugin to untrusted agents. Review `docs/security.md`
@@ -18,29 +18,25 @@ Codux on Hermes' native plugin surface.
 > duxweb (Codux). Hermes, Iroh, and Codux are the properties of their
 > respective owners.
 
-**Architecture** (per the feasibility plan, §2):
+## Visual guide
 
-```
-Hermes agent process
-  └─ Python plugin (this repo)
-      ├─ model-visible peer tools (iroh toolset)
-      ├─ pairing / trust / redaction policy
-      └─ one-shot sidecar control client
-             │ localhost stdio
-             ▼
-        hermes-iroh-sidecar (Rust, sidecar/)
-          ├─ Iroh Endpoint / SecretKey (pinned iroh 1.0.0)
-          ├─ bounded 4-byte length-prefixed JSON frames (4 MiB cap)
-          ├─ versioned envelope: hermes-interconnect v1
-          └─ ALPN /hermes/interconnect/1
-```
+The [average-user diagram guide](docs/DIAGRAMS.md) explains pairing, two-way
+calls, file transfers, inbound handoffs, relay behavior, and three-or-more-client
+topologies. It includes six Archify diagrams with editable JSON sources,
+interactive HTML versions, and a GitHub-renderable architecture SVG.
+
+![Hermes Iroh system architecture](docs/diagrams/how-hermes-agents-connect.svg)
+
+At a technical level, each Hermes host contains a Python plugin and a Rust
+sidecar. The plugin handles tools, trust, redaction, and adapter policy. The
+sidecar owns the persistent Iroh identity, QUIC, ALPN, and bounded frames.
 
 Status: **v0.3.0 — bidirectional transport plus optional artifacts**.
 Real QUIC peer dialing, persistent endpoint identity, serve-mode control
 plane, inbound authorization, admission hardening, relay configuration, and
-optional SendMe-backed file transfer are implemented and covered end-to-end:
+optional send_hermes-backed file transfer are implemented and covered end-to-end:
 a real QUIC peer → sidecar file handoff → adapter → reply back over QUIC
-runs green in CI-style tests. File transfer is delegated to SendMe when
+runs green in CI-style tests. File transfer is delegated to send_hermes when
 installed; without it, the task interconnect remains fully functional.
 Ring-based authorization remains staged (see "Roadmap").
 
@@ -48,16 +44,18 @@ Ring-based authorization remains staged (see "Roadmap").
 
 The plugin exposes `iroh_send_file`, `iroh_fetch_file`, and
 `iroh_transfer_status` through the `iroh` toolset. They use the installed
-SendMe CLI (`sendme`) and are optional: if SendMe is unavailable, the tools
-return an actionable install message and do not affect peer/task exchange.
-Install and verify it with:
+`send_hermes` CLI (the maintained Hermes fork of the SendMe project) and are optional: if
+`send_hermes` is unavailable, the tools return an actionable install message
+and do not affect peer/task exchange. Install and verify it with:
 
 ```bash
-cargo install --locked sendme
-sendme --version
+git clone https://github.com/rahlquist/sendme.git send_hermes
+cd send_hermes && git checkout send_hermes
+cargo install --path .
+send_hermes --version
 ```
 
-A SendMe sender must remain running until the receiver completes. Treat its
+A send_hermes sender must remain running until the receiver completes. Treat its
 ticket as a bearer capability and share it only with the intended peer.
 
 ## How the connection works
@@ -99,15 +97,15 @@ The diagram shows the full flow: pair once with a ticket, remember the stable En
 - Inbound tasks from unknown peers are rejected (fail closed).
 - Outbound calls to unreachable peers fail bounded (no hang, structured
   error, no partial state).
-- Optional SendMe-backed file transfer tools are registered without making
-  SendMe a plugin dependency. If `sendme` is absent, they return an
+- Optional send_hermes-backed file transfer tools are registered without making
+  send_hermes a plugin dependency. If `send_hermes` is absent, they return an
   actionable install/verify message; all task interconnect functionality
   continues to work normally.
 
 ## Install
 
-The plugin is optional with respect to SendMe. The three artifact tools remain
-registered even when `sendme` is absent; they return an actionable install
+The plugin is optional with respect to send_hermes. The three artifact tools remain
+registered even when `send_hermes` is absent; they return an actionable install
 message instead of preventing the Iroh task tools from loading.
 
 ```bash
@@ -125,8 +123,8 @@ finishes. Tickets are bearer capabilities. Do not put them in public channels.
 
 ### Relay configuration
 
-`HERMES_IROH_RELAY` applies to both the Iroh sidecar and SendMe transfers.
-The SendMe transfer tools are available only when the `sendme` executable is
+`HERMES_IROH_RELAY` applies to both the Iroh sidecar and send_hermes transfers.
+The send_hermes transfer tools are available only when the `sendme` executable is
 installed; otherwise they return the install/verify instructions without
 affecting task exchange.
 
@@ -159,8 +157,8 @@ reachability from every client before pairing.
 
 ### File-transfer provider
 
-`sendme send` is an interactive long-lived provider. The plugin requires the
-Unix `script` utility so it can keep SendMe's pseudo-terminal alive after the
+`send_hermes send` is an interactive long-lived provider. The plugin requires the
+Unix `script` utility so it can keep send_hermes's pseudo-terminal alive after the
 Hermes tool returns. On relay-disabled/LAN-only setups, the plugin requests an
 addresses-only ticket automatically. Relay startup is allowed up to 90 seconds by
 `iroh_send_file`; override with `HERMES_IROH_SEND_TIMEOUT` when operating over
@@ -178,7 +176,7 @@ adapter fetches it automatically into the requested existing directory. The
 provider remains tracked until the fetch request completes.
 
 Without `peer`, `iroh_send_file` retains the ticket-only behavior for manual
-or non-Hermes SendMe receivers.
+or non-Hermes send_hermes receivers.
 
 ### Hermes systemd drop-in for relay env
 
@@ -241,7 +239,7 @@ so it does not exit when stdin closes.
 
 GitHub Actions runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
 `cargo test`, and the Python suite on every push and pull request. The Python
-CI job does not require Hermes source or SendMe; those are optional runtime
+CI job does not require Hermes source or send_hermes; those are optional runtime
 integrations and have dedicated local/integration tests.
 
 
