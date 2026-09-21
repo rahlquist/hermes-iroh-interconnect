@@ -93,11 +93,11 @@ def _normalize_ticket(raw: str) -> Optional[str]:
 
 
 def sendme_available() -> Optional[str]:
-    """Returns the sendme binary path when installed, else None.
+    """Returns the send_hermes binary path when installed, else None.
 
     Checks the PATH plus the Hermes skill conventions. Never raises.
     """
-    return shutil.which("sendme")
+    return shutil.which("send_hermes")
 
 
 def sendme_install_hint() -> Dict[str, Any]:
@@ -105,17 +105,18 @@ def sendme_install_hint() -> Dict[str, Any]:
     return {
         "success": False,
         "error": (
-            "SendMe is not installed on this machine, so file transfer is "
+            "send_hermes is not installed on this machine, so file transfer is "
             "unavailable. The rest of the iroh interconnect (peer pairing, "
             "task exchange, adapter) works normally without it."
         ),
         "remedy": {
-            "what": "SendMe (p2p file transfer over iroh/iroh-blobs)",
+            "what": "send_hermes (p2p file transfer over iroh/iroh-blobs)",
             "install": (
-                "cargo install --locked sendme   # rustup required; or "
-                "grab a prebuilt release: https://github.com/n0-computer/sendme/releases"
+                "git clone https://github.com/rahlquist/sendme.git send_hermes && "
+                "cd send_hermes && git checkout send_hermes && "
+                "cargo install --path ."
             ),
-            "verify": "sendme --version",
+            "verify": "send_hermes --version",
             "optional_skill": (
                 "the sendme-file-transfer Hermes skill documents the safety "
                 "model and is recommended but not required"
