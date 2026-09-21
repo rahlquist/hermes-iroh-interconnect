@@ -26,12 +26,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlencode
 
 try:
     from .security import (
         TICKET_MAX_AGE_SECONDS,
         InvalidTicket,
         NonceStore,
+        StateCorrupt,
         PeerStore,
         redact_outbound,
         validate_ticket,
@@ -42,6 +44,7 @@ except ImportError:  # standalone test/import mode
         TICKET_MAX_AGE_SECONDS,
         InvalidTicket,
         NonceStore,
+        StateCorrupt,
         PeerStore,
         redact_outbound,
         validate_ticket,
@@ -92,28 +95,34 @@ def _store() -> PeerStore:
     return PeerStore(_state_dir())
 
 
-def _endpoint_id() -> Optional[str]:
-    """This agent's endpoint id, via the sidecar's offline ``id`` subcommand
-    (derives the public key from the persistent key file; binds nothing).
-    Returns None when no identity exists yet."""
+def _endpoint_info() -> Optional[Dict[str, Any]]:
+    """Return this agent's endpoint id and current direct addresses."""
     sidecar = _sidecar_path()
     if not sidecar:
         return None
+    relay = os.environ.get("HERMES_IROH_RELAY")
+    argv = [sidecar, "addr", "--state-dir", str(_state_dir())]
+    if relay:
+        argv += ["--relay", relay]
     try:
-        proc = subprocess.run(
-            [sidecar, "id", "--state-dir", str(_state_dir())],
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
+        proc = subprocess.run(argv, capture_output=True, timeout=30, check=False)
     except (OSError, subprocess.TimeoutExpired):
         return None
     if proc.returncode != 0:
         return None
     try:
-        return str(json.loads(proc.stdout.decode("utf-8", "replace"))["endpointId"])
+        info = json.loads(proc.stdout.decode("utf-8", "replace"))
+        return {
+            "endpointId": str(info["endpointId"]),
+            "addrs": [str(addr) for addr in info.get("addrs", [])][:16],
+        }
     except Exception:
         return None
+
+
+def _endpoint_id() -> Optional[str]:
+    info = _endpoint_info()
+    return info.get("endpointId") if info else None
 
 
 def _pairing_secret() -> str:
@@ -247,22 +256,25 @@ def iroh_peer_pair(args: dict, **_: Any) -> str:
 
     # Consume the nonce only at the commit point, after confirmation. This
     # preserves the documented review-then-confirm pairing flow.
-    nonces = NonceStore(state_dir)
-    if not nonces.mark_used(parsed["nonce"]):
-        return _err("ticket already used (nonce replay) — request a fresh ticket")
-
-    store = PeerStore(state_dir)
-    store.add_peer(
-        peer_id,
-        {
-            "endpoint_id": peer_id,
-            "secret": parsed["secret"],
-            "added": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "last_called": "",
-            "paired_via": "ticket",
-            "ticket_ts": parsed["ts"],
-        },
-    )
+    try:
+        nonces = NonceStore(state_dir)
+        if not nonces.mark_used(parsed["nonce"]):
+            return _err("ticket already used (nonce replay) — request a fresh ticket")
+        store = PeerStore(state_dir)
+        store.add_peer(
+            peer_id,
+            {
+                "endpoint_id": peer_id,
+                "addrs": parsed.get("addrs", []),
+                "secret": parsed["secret"],
+                "added": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "last_called": "",
+                "paired_via": "ticket",
+                "ticket_ts": parsed["ts"],
+            },
+        )
+    except StateCorrupt as exc:
+        return _err(f"persistent pairing state is corrupt and was quarantined: {exc}")
     return _ok({"peer_id": peer_id, "paired": True})
 
 
@@ -273,19 +285,24 @@ def iroh_peer_make_ticket(args: dict, **_: Any) -> str:
     issuance timestamp, and a random single-use nonce. Share it out-of-band
     with the peer agent; it expires after ``TICKET_MAX_AGE_SECONDS``.
     """
-    endpoint_id = _endpoint_id()
-    if not endpoint_id:
+    endpoint_info = _endpoint_info()
+    if not endpoint_info:
         return _err(
-            "endpoint id unavailable: the sidecar must have run once to "
-            "generate the persistent endpoint key"
+            "endpoint information unavailable: the sidecar must bind successfully "
+            "to generate the persistent identity and direct addresses"
         )
+    endpoint_id = endpoint_info["endpointId"]
     secret = _pairing_secret()
     nonce = _secrets.token_hex(16)
     ts = int(time.time())
-    ticket = (
-        f"hermes-iroh://pair?peer={endpoint_id}&secret={secret}"
-        f"&ts={ts}&nonce={nonce}"
-    )
+    ticket_params = [
+        ("peer", endpoint_id),
+        ("secret", secret),
+        ("ts", str(ts)),
+        ("nonce", nonce),
+    ]
+    ticket_params.extend(("addr", addr) for addr in endpoint_info.get("addrs", []))
+    ticket = "hermes-iroh://pair?" + urlencode(ticket_params)
     return _ok(
         {
             "ticket": ticket,

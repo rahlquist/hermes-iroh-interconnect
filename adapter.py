@@ -141,6 +141,8 @@ if _HERMES_AVAILABLE:
             self._reply_text: Dict[str, str] = {}
             self._last_delivered: Dict[str, str] = {}
             self._inflight_task_ids: set[str] = set()
+            self._cancelled_task_ids: set[str] = set()
+            self._task_handles: Dict[str, asyncio.Task] = {}
 
         # ── identity ──────────────────────────────────────────────────────
 
@@ -189,7 +191,9 @@ if _HERMES_AVAILABLE:
             endpoint_id = str(task.get("peerId") or "")
             remote_context_id = str(task.get("contextId") or task_id)
             text = str(task.get("text") or "")
-            if task_id in self._inflight_task_ids:
+            if task_id in self._inflight_task_ids or task_id in self._cancelled_task_ids:
+                self._cancelled_task_ids.discard(task_id)
+                path.unlink(missing_ok=True)
                 return
 
             peer_id = self._resolve_peer(endpoint_id)
@@ -205,7 +209,9 @@ if _HERMES_AVAILABLE:
             self._inflight_task_ids.add(task_id)
             if text.startswith(_AUTO_FETCH_PREFIX) and auto_fetch_enabled():
                 # Auto-fetch is enabled — fetch the file automatically.
-                asyncio.create_task(self._auto_fetch_file(path, task_id, text))
+                self._task_handles[task_id] = asyncio.create_task(
+                    self._auto_fetch_file(path, task_id, text)
+                )
                 return
 
             if text.startswith(_AUTO_FETCH_PREFIX) and not auto_fetch_enabled():
@@ -232,7 +238,7 @@ if _HERMES_AVAILABLE:
             )
             # The gateway resolves the reply through send() with this
             # context id; the poll loop does not block on it here.
-            asyncio.create_task(self.handle_message(event))
+            self._task_handles[task_id] = asyncio.create_task(self.handle_message(event))
 
         async def _auto_fetch_file(self, path: Path, task_id: str, text: str) -> None:
             try:
@@ -244,10 +250,19 @@ if _HERMES_AVAILABLE:
                 parsed = json.loads(result)
                 status = "completed" if parsed.get("success") else "failed"
                 reply_text = result[:256_000]
+            except asyncio.CancelledError:
+                self._cancelled_task_ids.add(task_id)
+                self._task_handles.pop(task_id, None)
+                self._inflight_task_ids.discard(task_id)
+                path.unlink(missing_ok=True)
+                raise
             except Exception as exc:
                 status = "failed"
                 reply_text = str(exc)
-            self._write_reply(task_id, status, reply_text)
+            if task_id not in self._cancelled_task_ids:
+                self._write_reply(task_id, status, reply_text)
+            self._cancelled_task_ids.discard(task_id)
+            self._task_handles.pop(task_id, None)
             self._inflight_task_ids.discard(task_id)
             path.unlink(missing_ok=True)
 
@@ -332,6 +347,14 @@ if _HERMES_AVAILABLE:
         async def _poll_once(self) -> None:
             if not self.queue_dir.exists():
                 return
+            for marker in self.queue_dir.glob("cancel-task-*"):
+                task_id = marker.name[len("cancel-"):]
+                self._cancelled_task_ids.add(task_id)
+                handle = self._task_handles.pop(task_id, None)
+                if handle is not None and not handle.done():
+                    handle.cancel()
+                marker.unlink(missing_ok=True)
+                self._inflight_task_ids.discard(task_id)
             # Dispatch fresh tasks. The task remains until send() produces
             # its reply, so the task/context pair survives async gateway work.
             for path in list(self.queue_dir.glob("task-*.json")):
@@ -356,7 +379,10 @@ if _HERMES_AVAILABLE:
                 reply = self._reply_text.pop(context_id, None)
                 if reply is not None:
                     task_id = str(task.get("taskId") or "")
-                    self._write_reply(task_id, "completed", reply)
+                    if task_id not in self._cancelled_task_ids:
+                        self._write_reply(task_id, "completed", reply)
+                    self._cancelled_task_ids.discard(task_id)
+                    self._task_handles.pop(task_id, None)
                     self._inflight_task_ids.discard(task_id)
                     path.unlink(missing_ok=True)
 
@@ -373,6 +399,8 @@ else:  # pragma: no cover - Hermes internals unavailable
             self._reply_text: Dict[str, str] = {}
             self._last_delivered: Dict[str, str] = {}
             self._inflight_task_ids: set[str] = set()
+            self._cancelled_task_ids: set[str] = set()
+            self._task_handles: Dict[str, asyncio.Task] = {}
             self._config = config
 
         @property

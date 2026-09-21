@@ -162,12 +162,36 @@ def _state_dir() -> Path:
 def _secure_state_dir() -> Path:
     """Create the profile state directory with private permissions."""
     state_dir = _state_dir()
+    if state_dir.is_symlink():
+        raise RuntimeError("plugin state directory must not be a symlink")
     state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
         state_dir.chmod(0o700)
     except OSError:
         pass
     return state_dir
+
+
+def _process_identity(pid: int) -> Optional[Dict[str, Any]]:
+    """Return Linux process incarnation data for safe later signaling."""
+    try:
+        stat_fields = Path(f"/proc/{pid}/stat").read_text().split()
+        return {
+            "start_ticks": int(stat_fields[21]),
+            "pgid": os.getpgid(pid),
+            "executable": os.readlink(f"/proc/{pid}/exe"),
+        }
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def _provider_matches(record: Dict[str, Any]) -> bool:
+    pid = record.get("pid")
+    expected = record.get("identity")
+    if not isinstance(pid, int) or not isinstance(expected, dict):
+        return False
+    actual = _process_identity(pid)
+    return actual == expected
 
 
 def _ok(payload: Dict[str, Any]) -> str:
@@ -335,6 +359,7 @@ def iroh_send_file(args: dict, **_: Any) -> str:
     transfers = _load_transfers()
     transfers[transfer_id] = {
         "pid": proc.pid,
+        "identity": _process_identity(proc.pid),
         "log": str(log_path),
         "path": str(path),
         "ticket": ticket,
@@ -480,12 +505,15 @@ def iroh_transfer_status(args: dict, **_: Any) -> str:
             return _err(f"unknown transfer id: {stop_id}")
         pid = record.get("pid")
         stopped = False
-        if pid is not None:
+        if pid is not None and _provider_matches(record):
             try:
-                os.killpg(int(pid), signal.SIGTERM)
+                os.killpg(int(record["identity"]["pgid"]), signal.SIGTERM)
                 stopped = True
             except (ProcessLookupError, PermissionError, ValueError):
                 stopped = False
+        elif pid is not None:
+            record["status"] = "stale-record"
+            stopped = False
         log_path = record.get("log")
         if log_path:
             try:
@@ -506,11 +534,10 @@ def iroh_transfer_status(args: dict, **_: Any) -> str:
     alive = {}
     for tid, record in transfers.items():
         pid = record.get("pid")
-        try:
-            os.kill(int(pid), 0)
+        if _provider_matches(record):
             alive[tid] = {k: record[k] for k in ("path", "ticket", "started", "status")}
-        except (ProcessLookupError, TypeError, ValueError):
-            record["status"] = "already-exited"
+        else:
+            record["status"] = "stale-record"
             alive[tid] = {"path": record.get("path"), "status": record["status"]}
     _save_transfers(transfers)
     return _ok({"transfers": alive})

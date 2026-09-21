@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets as _secrets
 import tempfile
 import time
 from contextlib import contextmanager
@@ -48,6 +49,20 @@ class InvalidTicket(ValueError):
     """Raised when a pairing ticket fails offline validation."""
 
 
+class StateCorrupt(RuntimeError):
+    """Raised when persistent security state cannot be parsed safely."""
+
+
+def _quarantine_corrupt(path: Path) -> None:
+    """Move unreadable state aside without silently replacing it."""
+    stamp = f"{int(time.time())}-{_secrets.token_hex(6)}"
+    quarantine = path.with_name(f"{path.name}.corrupt-{stamp}")
+    try:
+        os.replace(path, quarantine)
+    except OSError:
+        pass
+
+
 def validate_ticket(raw: str, *, now: Optional[float] = None) -> Dict[str, Any]:
     """Parse a ``hermes-iroh://pair?peer=...&secret=...&ts=...&nonce=...`` ticket.
 
@@ -76,11 +91,15 @@ def validate_ticket(raw: str, *, now: Optional[float] = None) -> Dict[str, Any]:
     if (parts.hostname or "") != "pair":
         raise InvalidTicket(f"unexpected ticket host {parts.hostname!r}")
 
-    query = {k: v[0] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
+    parsed_query = parse_qs(parts.query, keep_blank_values=True)
+    query = {k: v[0] for k, v in parsed_query.items()}
     peer_id = (query.get("peer") or "").strip()
     secret = (query.get("secret") or "").strip()
     ts_raw = (query.get("ts") or "").strip()
     nonce = (query.get("nonce") or "").strip()
+    addrs = [addr.strip() for addr in parsed_query.get("addr", []) if addr.strip()]
+    if len(addrs) > 16 or any(len(addr) > 128 or any(ch.isspace() for ch in addr) for addr in addrs):
+        raise InvalidTicket("ticket contains invalid direct addresses")
 
     if not peer_id:
         raise InvalidTicket("ticket is missing the peer id")
@@ -112,7 +131,7 @@ def validate_ticket(raw: str, *, now: Optional[float] = None) -> Dict[str, Any]:
             f"ticket expired ({int(age)}s old, max {TICKET_MAX_AGE_SECONDS}s)"
         )
 
-    return {"peer_id": peer_id, "secret": secret, "ts": ts, "nonce": nonce}
+    return {"peer_id": peer_id, "secret": secret, "ts": ts, "nonce": nonce, "addrs": addrs}
 
 
 @contextmanager
@@ -159,12 +178,13 @@ class NonceStore:
 
     def _load(self) -> Dict[str, float]:
         try:
-            return {
-                k: float(v)
-                for k, v in json.loads(self.path.read_text(encoding="utf-8")).items()
-            }
-        except Exception:
-            return {}
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                raise ValueError("nonce state is not an object")
+            return {k: float(v) for k, v in raw.items()}
+        except Exception as exc:
+            _quarantine_corrupt(self.path)
+            raise StateCorrupt(f"nonce state is corrupt: {exc}") from exc
 
     def mark_used(self, nonce: str, *, now: Optional[float] = None) -> bool:
         """Records *nonce* as consumed. Returns False on replay."""
@@ -222,9 +242,13 @@ class PeerStore:
 
     def _load(self) -> Dict[str, Dict[str, Any]]:
         try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict) or any(not isinstance(v, dict) for v in raw.values()):
+                raise ValueError("peer state is not an object of records")
+            return raw
+        except Exception as exc:
+            _quarantine_corrupt(self.path)
+            raise StateCorrupt(f"peer state is corrupt: {exc}") from exc
 
     def add_peer(self, peer_id: str, record: Dict[str, Any]) -> None:
         with _state_lock(self.path):
