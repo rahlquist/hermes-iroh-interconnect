@@ -42,8 +42,8 @@ The two local processes communicate over standard input/output. Sidecars communi
 
 Pairing is an approval operation, not a permanent network connection.
 
-- The receiving agent creates a ticket.
-- The operator passes it privately to the intended peer.
+- The receiving agent creates a ticket and an SVG QR code containing the same pairing data.
+- The operator passes the ticket privately or shows/scans the QR with the intended peer.
 - The other operator reviews the endpoint identity and expiration.
 - `confirm=true` records the peer locally.
 - The ticket is then discarded. Future calls use the stored EndpointId.

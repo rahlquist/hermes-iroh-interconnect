@@ -141,6 +141,42 @@ def _ok(payload: Dict[str, Any]) -> str:
     return json.dumps({"success": True, **payload})
 
 
+def _pairing_qr(ticket: str, *, ts: int, nonce: str) -> Dict[str, Any]:
+    """Write a restrictive SVG QR containing the complete pairing ticket.
+
+    ``qrencode`` is deliberately invoked with the ticket on stdin so it does
+    not appear in the process list. The QR file is a bearer capability and is
+    therefore stored alongside pairing state with mode 0600.
+    """
+    binary = shutil.which("qrencode")
+    if not binary:
+        return {
+            "available": False,
+            "error": "qrencode is not installed; install it to generate pairing QR codes",
+        }
+    state_dir = _state_dir()
+    state_dir.mkdir(parents=True, exist_ok=True)
+    path = state_dir / f"pairing-ticket-{ts}-{nonce[:8]}.svg"
+    try:
+        proc = subprocess.run(
+            [binary, "-t", "SVG", "-o", str(path)],
+            input=ticket.encode("utf-8"),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        path.unlink(missing_ok=True)
+        return {"available": False, "error": f"QR generation failed: {exc}"}
+    if proc.returncode != 0 or not path.exists():
+        path.unlink(missing_ok=True)
+        detail = proc.stderr.decode("utf-8", "replace").strip()
+        return {"available": False, "error": f"QR generation failed{': ' + detail if detail else ''}"}
+    os.chmod(path, 0o600)
+    return {"available": True, "format": "svg", "path": str(path)}
+
+
 def _err(message: str) -> str:
     return json.dumps({"success": False, "error": message})
 
@@ -254,6 +290,7 @@ def iroh_peer_make_ticket(args: dict, **_: Any) -> str:
             "ticket": ticket,
             "peer_id": endpoint_id,
             "expires_in_seconds": TICKET_MAX_AGE_SECONDS,
+            "qr_code": _pairing_qr(ticket, ts=ts, nonce=nonce),
         }
     )
 
@@ -405,9 +442,10 @@ def register_tools(ctx: Any) -> None:
         schema={
             "name": "iroh_peer_make_ticket",
             "description": (
-                "Issue a fresh single-use pairing ticket for THIS agent so a remote "
-                "peer can pair with it. Share the ticket out-of-band; it expires in "
-                "15 minutes and can be used exactly once."
+                "Issue a fresh single-use pairing ticket and an SVG QR code for THIS "
+                "agent so a remote peer can scan and pair with it. Share the "
+                "ticket or QR only with the intended peer; it expires in 15 "
+                "minutes and can be used exactly once."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },

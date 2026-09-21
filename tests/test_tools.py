@@ -137,6 +137,11 @@ class TestMakeTicket:
         assert ticket.startswith("hermes-iroh://pair?")
         assert "ts=" in ticket and "nonce=" in ticket
         assert out["expires_in_seconds"] == 900
+        assert out["qr_code"]["format"] == "svg"
+        qr_path = Path(out["qr_code"]["path"])
+        assert qr_path.exists()
+        assert qr_path.stat().st_mode & 0o777 == 0o600
+        assert "<svg" in qr_path.read_text(encoding="utf-8")
         # The ticket it just issued validates and pairs end-to-end.
         parsed = json.loads(
             iroh_tools.iroh_peer_pair(
